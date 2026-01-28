@@ -92,10 +92,14 @@ jobs:
           DATABASE_FILENAME: /tmp/test.duckdb
           TLS_ENABLED: "0"
           PRINT_QUERIES: "1"
+        options: >-
+          --health-cmd "nc -z localhost 31337 || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
 
     steps:
-      - name: Wait for GizmoSQL to start
-        run: sleep 10
       - name: Checkout
         uses: actions/checkout@v4
         with:
