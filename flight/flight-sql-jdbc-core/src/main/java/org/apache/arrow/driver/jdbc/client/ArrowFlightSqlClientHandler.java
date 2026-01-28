@@ -40,6 +40,8 @@ import org.apache.arrow.driver.jdbc.client.utils.FlightClientCache;
 import org.apache.arrow.driver.jdbc.client.utils.FlightLocationQueue;
 import org.apache.arrow.flight.CallOption;
 import org.apache.arrow.flight.CallStatus;
+import org.apache.arrow.flight.CancelFlightInfoRequest;
+import org.apache.arrow.flight.CancelFlightInfoResult;
 import org.apache.arrow.flight.CloseSessionRequest;
 import org.apache.arrow.flight.FlightClient;
 import org.apache.arrow.flight.FlightClientMiddleware;
@@ -575,6 +577,20 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
 
     return sqlClient.getTables(
         catalog, schemaPattern, tableNamePattern, types, includeSchema, getOptions());
+  }
+
+  /**
+   * Cancels execution of a distributed query.
+   *
+   * <p>This sends a CancelFlightInfo action to the server, which can terminate query execution.
+   * Note that cancellation is best-effort: the server may not support it, or the query may have
+   * already completed.
+   *
+   * @param info The FlightInfo representing the query to cancel.
+   * @return The server's response indicating the cancellation status.
+   */
+  public CancelFlightInfoResult cancelFlightInfo(final FlightInfo info) {
+    return sqlClient.cancelFlightInfo(new CancelFlightInfoRequest(info), getOptions());
   }
 
   /**

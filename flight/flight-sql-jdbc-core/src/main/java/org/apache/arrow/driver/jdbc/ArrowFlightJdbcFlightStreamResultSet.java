@@ -28,6 +28,7 @@ import org.apache.arrow.driver.jdbc.client.CloseableEndpointStreamPair;
 import org.apache.arrow.driver.jdbc.utils.FlightEndpointDataQueue;
 import org.apache.arrow.driver.jdbc.utils.VectorSchemaRootTransformer;
 import org.apache.arrow.flight.FlightInfo;
+import org.apache.arrow.flight.FlightRuntimeException;
 import org.apache.arrow.flight.FlightStream;
 import org.apache.arrow.util.AutoCloseables;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -37,6 +38,8 @@ import org.apache.calcite.avatica.AvaticaResultSetMetaData;
 import org.apache.calcite.avatica.AvaticaStatement;
 import org.apache.calcite.avatica.Meta;
 import org.apache.calcite.avatica.QueryState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link ResultSet} implementation for Arrow Flight used to access the results of multiple {@link
@@ -44,6 +47,9 @@ import org.apache.calcite.avatica.QueryState;
  */
 public final class ArrowFlightJdbcFlightStreamResultSet
     extends ArrowFlightJdbcVectorSchemaRootResultSet {
+
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(ArrowFlightJdbcFlightStreamResultSet.class);
 
   private final ArrowFlightConnection connection;
   private final FlightInfo flightInfo;
@@ -220,6 +226,17 @@ public final class ArrowFlightJdbcFlightStreamResultSet
   @Override
   protected void cancel() {
     super.cancel();
+    // Send cancel request to the server to stop query execution
+    if (flightInfo != null) {
+      try {
+        connection.getClientHandler().cancelFlightInfo(flightInfo);
+      } catch (final FlightRuntimeException e) {
+        // Server may not support cancellation or query may have already completed.
+        // This is best-effort cancellation; we still need to clean up local resources.
+        LOGGER.debug("Failed to cancel query on server (may not be supported or query completed)", e);
+      }
+    }
+
     final CloseableEndpointStreamPair currentEndpoint = this.currentEndpointData;
     if (currentEndpoint != null) {
       currentEndpoint.getStream().cancel("Cancel", null);
