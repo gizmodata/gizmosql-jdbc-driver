@@ -233,7 +233,8 @@ public final class ArrowFlightJdbcFlightStreamResultSet
       } catch (final FlightRuntimeException e) {
         // Server may not support cancellation or query may have already completed.
         // This is best-effort cancellation; we still need to clean up local resources.
-        LOGGER.debug("Failed to cancel query on server (may not be supported or query completed)", e);
+        LOGGER.debug(
+            "Failed to cancel query on server (may not be supported or query completed)", e);
       }
     }
 

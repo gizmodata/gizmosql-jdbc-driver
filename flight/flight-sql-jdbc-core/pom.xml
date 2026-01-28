@@ -218,6 +218,12 @@ under the License.
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <enableAssertions>false</enableAssertions>
+              <systemPropertyVariables>
+                <arrow.test.dataRoot>${project.basedir}/../../testing/data</arrow.test.dataRoot>
+              </systemPropertyVariables>
+            </configuration>
             <executions>
               <execution>
                 <goals>
@@ -226,12 +232,6 @@ under the License.
                 </goals>
               </execution>
             </executions>
-            <configuration>
-              <enableAssertions>false</enableAssertions>
-              <systemPropertyVariables>
-                <arrow.test.dataRoot>${project.basedir}/../../testing/data</arrow.test.dataRoot>
-              </systemPropertyVariables>
-            </configuration>
           </plugin>
         </plugins>
       </build>

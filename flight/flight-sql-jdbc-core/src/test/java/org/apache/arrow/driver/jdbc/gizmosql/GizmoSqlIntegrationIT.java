@@ -65,7 +65,8 @@ public class GizmoSqlIntegrationIT {
     String port = System.getenv().getOrDefault("GIZMOSQL_PORT", "31337");
     String username = System.getenv().getOrDefault("GIZMOSQL_USERNAME", "gizmosql_user");
     String password = System.getenv().getOrDefault("GIZMOSQL_PASSWORD", "gizmosql_password");
-    boolean useTls = Boolean.parseBoolean(System.getenv().getOrDefault("GIZMOSQL_USE_TLS", "false"));
+    boolean useTls =
+        Boolean.parseBoolean(System.getenv().getOrDefault("GIZMOSQL_USE_TLS", "false"));
 
     // Use the new gizmosql:// scheme
     jdbcUrl = String.format("jdbc:gizmosql://%s:%s", host, port);
@@ -158,7 +159,9 @@ public class GizmoSqlIntegrationIT {
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery("SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS t(id, name)")) {
+        ResultSet rs =
+            stmt.executeQuery(
+                "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS t(id, name)")) {
 
       int rowCount = 0;
       while (rs.next()) {
@@ -181,7 +184,8 @@ public class GizmoSqlIntegrationIT {
         Statement stmt = conn.createStatement()) {
 
       // Create a test table
-      stmt.execute("CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name VARCHAR, value DOUBLE)");
+      stmt.execute(
+          "CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name VARCHAR, value DOUBLE)");
 
       // Insert some data
       stmt.execute("INSERT INTO test_table VALUES (1, 'Alice', 10.5)");
@@ -251,8 +255,7 @@ public class GizmoSqlIntegrationIT {
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
         ResultSet rs =
-            stmt.executeQuery(
-                "SELECT 42 AS int_col, 'hello' AS str_col, 3.14 AS double_col")) {
+            stmt.executeQuery("SELECT 42 AS int_col, 'hello' AS str_col, 3.14 AS double_col")) {
 
       ResultSetMetaData metaData = rs.getMetaData();
       assertNotNull(metaData);
@@ -491,8 +494,7 @@ public class GizmoSqlIntegrationIT {
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
         ResultSet rs =
-            stmt.executeQuery(
-                "SELECT list(i) AS arr FROM (SELECT unnest([1,2,3,4,5]) AS i)")) {
+            stmt.executeQuery("SELECT list(i) AS arr FROM (SELECT unnest([1,2,3,4,5]) AS i)")) {
 
       assertTrue(rs.next());
       Object arr = rs.getObject("arr");
@@ -515,5 +517,4 @@ public class GizmoSqlIntegrationIT {
       assertNotNull(arr, "String array should not be null");
     }
   }
-
 }
