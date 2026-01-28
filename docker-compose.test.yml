@@ -10,6 +10,7 @@ services:
     image: gizmodata/gizmosql:latest
     ports:
       - "31337:31337"
+      - "31338:31338"
     environment:
       GIZMOSQL_USERNAME: gizmosql_user
       GIZMOSQL_PASSWORD: gizmosql_password
@@ -18,7 +19,7 @@ services:
       PRINT_QUERIES: "1"
       LOG_LEVEL: debug
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:31337/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:31338/health"]
       interval: 10s
       timeout: 5s
       retries: 10

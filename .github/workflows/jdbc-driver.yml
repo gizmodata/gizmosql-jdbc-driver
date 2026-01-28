@@ -86,6 +86,7 @@ jobs:
         image: gizmodata/gizmosql:latest
         ports:
           - 31337:31337
+          - 31338:31338
         env:
           GIZMOSQL_USERNAME: gizmosql_user
           GIZMOSQL_PASSWORD: gizmosql_password
@@ -94,7 +95,7 @@ jobs:
           PRINT_QUERIES: "1"
           LOG_LEVEL: debug
         options: >-
-          --health-cmd "curl -f http://localhost:31337/health || exit 1"
+          --health-cmd "curl -f http://localhost:31338/health || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
