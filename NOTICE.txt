@@ -1,3 +1,10 @@
+GizmoSQL JDBC Driver
+Copyright 2025 GizmoData LLC
+
+This product is a fork of Apache Arrow Java (https://github.com/apache/arrow-java)
+and includes software developed at The Apache Software Foundation (http://www.apache.org/).
+
+---------------------------------------------------
 Apache Arrow Java
 Copyright 2016-2025 The Apache Software Foundation
 
