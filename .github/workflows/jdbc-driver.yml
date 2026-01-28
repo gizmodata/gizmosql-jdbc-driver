@@ -132,8 +132,8 @@ jobs:
         run: |
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core \
-            -am \
             -Pintegration-tests \
+            -Dit.test="org.apache.arrow.driver.jdbc.gizmosql.*" \
             failsafe:integration-test failsafe:verify
 
   publish-snapshot:
