@@ -207,4 +207,34 @@ under the License.
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <!-- This profile turns on integration testing with GizmoSQL.
+           Activate with: mvn -Pintegration-tests failsafe:integration-test failsafe:verify -->
+      <id>integration-tests</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <enableAssertions>false</enableAssertions>
+              <systemPropertyVariables>
+                <arrow.test.dataRoot>${project.basedir}/../../testing/data</arrow.test.dataRoot>
+              </systemPropertyVariables>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

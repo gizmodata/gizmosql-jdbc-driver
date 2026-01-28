@@ -1,0 +1,25 @@
+# Docker Compose for local GizmoSQL JDBC Driver integration testing
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   ./mvnw -pl flight/flight-sql-jdbc-core -Pintegration-tests failsafe:integration-test
+#   docker compose -f docker-compose.test.yml down
+
+services:
+  gizmosql:
+    image: gizmodata/gizmosql:latest
+    ports:
+      - "31337:31337"
+    environment:
+      GIZMOSQL_USERNAME: gizmosql_user
+      GIZMOSQL_PASSWORD: gizmosql_password
+      DATABASE_FILENAME: /tmp/test.duckdb
+      TLS_ENABLED: "0"
+      PRINT_QUERIES: "1"
+      LOG_LEVEL: debug
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:31337/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

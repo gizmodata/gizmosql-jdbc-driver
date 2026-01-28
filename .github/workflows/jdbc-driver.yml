@@ -57,7 +57,7 @@ jobs:
             -DskipTests \
             package
 
-      - name: Run Tests
+      - name: Run Unit Tests
         run: |
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver \
@@ -71,6 +71,68 @@ jobs:
           name: gizmosql-jdbc-driver
           path: flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
           if-no-files-found: error
+
+  integration-test:
+    name: Integration Tests (JDK ${{ matrix.jdk }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: [11, 17, 21]
+
+    services:
+      gizmosql:
+        image: gizmodata/gizmosql:latest
+        ports:
+          - 31337:31337
+        env:
+          GIZMOSQL_USERNAME: gizmosql_user
+          GIZMOSQL_PASSWORD: gizmosql_password
+          DATABASE_FILENAME: /tmp/test.duckdb
+          TLS_ENABLED: "0"
+          PRINT_QUERIES: "1"
+          LOG_LEVEL: debug
+        options: >-
+          --health-cmd "curl -f http://localhost:31337/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up JDK ${{ matrix.jdk }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.jdk }}
+          cache: 'maven'
+
+      - name: Build JDBC Driver
+        run: |
+          ./mvnw -B -ntp \
+            -pl flight/flight-sql-jdbc-driver \
+            -am \
+            -DskipTests \
+            package
+
+      - name: Run Integration Tests
+        env:
+          GIZMOSQL_HOST: localhost
+          GIZMOSQL_PORT: 31337
+          GIZMOSQL_USERNAME: gizmosql_user
+          GIZMOSQL_PASSWORD: gizmosql_password
+        run: |
+          ./mvnw -B -ntp \
+            -pl flight/flight-sql-jdbc-core \
+            -Pintegration-tests \
+            failsafe:integration-test failsafe:verify
 
   publish-snapshot:
     name: Publish Snapshot
