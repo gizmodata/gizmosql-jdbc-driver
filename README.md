@@ -31,43 +31,29 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 <dependency>
     <groupId>com.gizmodata</groupId>
     <artifactId>gizmosql-jdbc-driver</artifactId>
-    <version>VERSION</version>
+    <version>1.0.0</version>
 </dependency>
-
-<repositories>
-    <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/gizmodata/gizmosql-jdbc-driver</url>
-    </repository>
-</repositories>
 ```
 
 ### Gradle
 
 ```groovy
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/gizmodata/gizmosql-jdbc-driver")
-        credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
-            password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-
 dependencies {
-    implementation 'com.gizmodata:gizmosql-jdbc-driver:VERSION'
+    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.0.0'
 }
 ```
 
 ## Usage
+
+### Basic Connection (with TLS)
 
 ```java
 import java.sql.*;
 
 public class Example {
     public static void main(String[] args) throws SQLException {
-        String url = "jdbc:arrow-flight-sql://localhost:31337";
+        // Recommended: TLS enabled with certificate verification
+        String url = "jdbc:gizmosql://your-server.example.com:31337?useEncryption=true";
 
         try (Connection conn = DriverManager.getConnection(url, "user", "password");
              Statement stmt = conn.createStatement();
@@ -81,17 +67,49 @@ public class Example {
 }
 ```
 
+### Development/Testing (Skip Certificate Verification)
+
+For development environments with self-signed certificates:
+
+```java
+// TLS enabled but skip certificate verification (development only!)
+String url = "jdbc:gizmosql://localhost:31337?useEncryption=true&disableCertificateVerification=true";
+
+try (Connection conn = DriverManager.getConnection(url, "user", "password")) {
+    // ...
+}
+```
+
+### Connection URL Format
+
+```
+jdbc:gizmosql://[host]:[port]?[param1=value1&param2=value2...]
+```
+
+The driver also accepts `jdbc:arrow-flight-sql://` for backward compatibility.
+
 ## Connection Properties
 
-| Property | Description |
-|----------|-------------|
-| `user` | Username for authentication |
-| `password` | Password for authentication |
-| `useEncryption` | Enable TLS encryption (default: false) |
-| `disableCertificateVerification` | Skip certificate verification (default: false) |
-| `token` | Bearer token for authentication |
-| `trustStore` | Path to Java truststore for TLS |
-| `trustStorePassword` | Truststore password |
+| Property | Description | Default |
+|----------|-------------|---------|
+| `user` | Username for authentication | - |
+| `password` | Password for authentication | - |
+| `useEncryption` | Enable TLS encryption | `false` |
+| `disableCertificateVerification` | Skip certificate verification (dev only) | `false` |
+| `token` | Bearer token for authentication | - |
+| `trustStore` | Path to Java truststore for TLS | - |
+| `trustStorePassword` | Truststore password | - |
+
+Properties can be passed either in the URL or via the `Properties` object:
+
+```java
+Properties props = new Properties();
+props.setProperty("user", "myuser");
+props.setProperty("password", "mypassword");
+props.setProperty("useEncryption", "true");
+
+Connection conn = DriverManager.getConnection("jdbc:gizmosql://localhost:31337", props);
+```
 
 ## Building from Source
 
