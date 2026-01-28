@@ -92,13 +92,26 @@ The driver also accepts `jdbc:arrow-flight-sql://` for backward compatibility.
 
 | Property | Description | Default |
 |----------|-------------|---------|
-| `user` | Username for authentication | - |
-| `password` | Password for authentication | - |
-| `useEncryption` | Enable TLS encryption | `false` |
-| `disableCertificateVerification` | Skip certificate verification (dev only) | `false` |
-| `token` | Bearer token for authentication | - |
-| `trustStore` | Path to Java truststore for TLS | - |
-| `trustStorePassword` | Truststore password | - |
+| **Authentication** | | |
+| `user` | Username for user/password authentication | - |
+| `password` | Password for user/password authentication | - |
+| `token` | Bearer token for token authentication | - |
+| **TLS/Encryption** | | |
+| `useEncryption` | Whether to use TLS encryption | `true` |
+| `disableCertificateVerification` | Skip server certificate verification (dev only) | `false` |
+| `useSystemTrustStore` | Use the system certificate store | `true` |
+| `trustStore` | Path to Java truststore (JKS) for TLS | - |
+| `trustStorePassword` | Password for the truststore | - |
+| `tlsRootCerts` | Path to PEM-encoded root certificates (alternative to trustStore) | - |
+| **Mutual TLS (mTLS)** | | |
+| `clientCertificate` | Path to PEM-encoded client certificate for mTLS | - |
+| `clientKey` | Path to PEM-encoded client private key for mTLS | - |
+| **Advanced** | | |
+| `threadPoolSize` | Size of internal thread pool | `1` |
+| `retainCookies` | Retain cookies from initial connection | `true` |
+| `retainAuth` | Retain bearer tokens from initial connection | `true` |
+
+**Note:** URI parameter values must be URI-encoded (e.g., `password=my%23password` for `my#password`). Properties object values should not be encoded.
 
 Properties can be passed either in the URL or via the `Properties` object:
 
