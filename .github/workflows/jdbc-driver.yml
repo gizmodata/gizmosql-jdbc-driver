@@ -121,7 +121,7 @@ jobs:
             -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
-            package
+            install
 
       - name: Run Integration Tests
         env:
@@ -132,6 +132,7 @@ jobs:
         run: |
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core \
+            -am \
             -Pintegration-tests \
             failsafe:integration-test failsafe:verify
 
