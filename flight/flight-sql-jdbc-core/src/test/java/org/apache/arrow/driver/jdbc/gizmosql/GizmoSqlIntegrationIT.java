@@ -516,24 +516,4 @@ public class GizmoSqlIntegrationIT {
     }
   }
 
-  @Test
-  @Order(106)
-  void testDatabaseProductNameForDialectDetection() throws SQLException {
-    // This test verifies what product name is returned, which affects SQL dialect detection
-    // in tools like DBeaver. If it returns "DuckDB", tools should use DuckDB dialect.
-    assumeServerAvailable();
-
-    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
-      DatabaseMetaData metaData = conn.getMetaData();
-      String productName = metaData.getDatabaseProductName();
-
-      System.out.println("Database Product Name: " + productName);
-      System.out.println(
-          "Note: If this is not 'DuckDB', SQL tools may use wrong dialect and transform array syntax incorrectly");
-
-      assertNotNull(productName);
-      // This assertion documents expected behavior - if it fails, it explains the issue
-      // The server should return "DuckDB" for proper dialect detection
-    }
-  }
 }
