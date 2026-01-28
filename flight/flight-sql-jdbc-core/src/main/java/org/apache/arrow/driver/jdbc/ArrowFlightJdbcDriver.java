@@ -42,12 +42,13 @@ import org.apache.calcite.avatica.DriverVersion;
 import org.apache.calcite.avatica.Meta;
 import org.apache.calcite.avatica.UnregisteredDriver;
 
-/** JDBC driver for querying data from an Apache Arrow Flight server. */
+/** JDBC driver for querying data from a GizmoSQL or Apache Arrow Flight SQL server. */
 public class ArrowFlightJdbcDriver extends UnregisteredDriver {
-  private static final String CONNECT_STRING_PREFIX = "jdbc:arrow-flight-sql://";
+  private static final String CONNECT_STRING_PREFIX = "jdbc:gizmosql://";
+  private static final String CONNECT_STRING_PREFIX_ARROW = "jdbc:arrow-flight-sql://";
   private static final String CONNECT_STRING_PREFIX_DEPRECATED = "jdbc:arrow-flight://";
   private static final String CONNECTION_STRING_EXPECTED =
-      "jdbc:arrow-flight-sql://[host][:port][?param1=value&...]";
+      "jdbc:gizmosql://[host][:port][?param1=value&...] or jdbc:arrow-flight-sql://[host][:port][?param1=value&...]";
   private static DriverVersion version;
 
   static {
@@ -162,6 +163,7 @@ public class ArrowFlightJdbcDriver extends UnregisteredDriver {
   public boolean acceptsURL(final String url) {
     Preconditions.checkNotNull(url);
     return url.startsWith(CONNECT_STRING_PREFIX)
+        || url.startsWith(CONNECT_STRING_PREFIX_ARROW)
         || url.startsWith(CONNECT_STRING_PREFIX_DEPRECATED);
   }
 
@@ -170,6 +172,7 @@ public class ArrowFlightJdbcDriver extends UnregisteredDriver {
    * {@link #CONNECT_STRING_PREFIX}.
    *
    * <p>This method gets the args if the provided URL follows this pattern: {@code
+   * jdbc:gizmosql://<host>:<port>[/?key1=val1&key2=val2&(...)]} or {@code
    * jdbc:arrow-flight-sql://<host>:<port>[/?key1=val1&key2=val2&(...)]}
    *
    * <table border="1">
@@ -251,8 +254,9 @@ public class ArrowFlightJdbcDriver extends UnregisteredDriver {
       throw new SQLException("Malformed/invalid URL!", e);
     }
 
-    if (!Objects.equals(uri.getScheme(), "arrow-flight")
-        && !Objects.equals(uri.getScheme(), "arrow-flight-sql")) {
+    if (!Objects.equals(uri.getScheme(), "gizmosql")
+        && !Objects.equals(uri.getScheme(), "arrow-flight-sql")
+        && !Objects.equals(uri.getScheme(), "arrow-flight")) {
       return Optional.empty();
     }
 

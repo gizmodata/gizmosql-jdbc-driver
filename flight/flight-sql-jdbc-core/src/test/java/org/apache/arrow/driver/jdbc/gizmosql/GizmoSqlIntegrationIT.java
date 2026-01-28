@@ -67,8 +67,8 @@ public class GizmoSqlIntegrationIT {
     String password = System.getenv().getOrDefault("GIZMOSQL_PASSWORD", "gizmosql_password");
     boolean useTls = Boolean.parseBoolean(System.getenv().getOrDefault("GIZMOSQL_USE_TLS", "false"));
 
-    String scheme = useTls ? "arrow-flight-sql" : "arrow-flight-sql";
-    jdbcUrl = String.format("jdbc:%s://%s:%s", scheme, host, port);
+    // Use the new gizmosql:// scheme
+    jdbcUrl = String.format("jdbc:gizmosql://%s:%s", host, port);
 
     connectionProps = new Properties();
     connectionProps.setProperty("user", username);

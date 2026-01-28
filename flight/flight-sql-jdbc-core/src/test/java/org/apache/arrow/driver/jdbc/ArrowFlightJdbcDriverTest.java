@@ -84,6 +84,9 @@ public class ArrowFlightJdbcDriverTest {
   @Test
   public void testDriverIsRegisteredInDriverManager() throws Exception {
     assertTrue(
+        DriverManager.getDriver("jdbc:gizmosql://localhost:32010")
+            instanceof ArrowFlightJdbcDriver);
+    assertTrue(
         DriverManager.getDriver("jdbc:arrow-flight://localhost:32010")
             instanceof ArrowFlightJdbcDriver);
     assertTrue(
@@ -115,6 +118,20 @@ public class ArrowFlightJdbcDriverTest {
     // Get the Arrow Flight JDBC driver by providing a URL with a valid prefix.
     final Driver driver = new ArrowFlightJdbcDriver();
 
+    // Test with jdbc:gizmosql:// (preferred)
+    try (Connection connection =
+        driver.connect(
+            "jdbc:gizmosql://"
+                + dataSource.getConfig().getHost()
+                + ":"
+                + dataSource.getConfig().getPort()
+                + "?"
+                + "useEncryption=false",
+            dataSource.getProperties(
+                dataSource.getConfig().getUser(), dataSource.getConfig().getPassword()))) {
+      assertTrue(connection.isValid(300));
+    }
+    // Test with jdbc:arrow-flight:// (deprecated)
     try (Connection connection =
         driver.connect(
             "jdbc:arrow-flight://"
@@ -127,6 +144,7 @@ public class ArrowFlightJdbcDriverTest {
                 dataSource.getConfig().getUser(), dataSource.getConfig().getPassword()))) {
       assertTrue(connection.isValid(300));
     }
+    // Test with jdbc:arrow-flight-sql:// (for backward compatibility)
     try (Connection connection =
         driver.connect(
             "jdbc:arrow-flight-sql://"
@@ -373,6 +391,46 @@ public class ArrowFlightJdbcDriverTest {
       throws SQLException {
     final ArrowFlightJdbcDriver driver = new ArrowFlightJdbcDriver();
     assertFalse(driver.getUrlsArgs("jdbc:malformed-url-flight://localhost:2222").isPresent());
+  }
+
+  /**
+   * Tests whether {@link ArrowFlightJdbcDriver#getUrlsArgs} works with the gizmosql:// scheme.
+   *
+   * @throws Exception If an error occurs.
+   */
+  @Test
+  public void testDriverUrlParsingWithGizmoSqlScheme() throws Exception {
+    final ArrowFlightJdbcDriver driver = new ArrowFlightJdbcDriver();
+
+    final Map<Object, Object> parsedArgs =
+        driver
+            .getUrlsArgs("jdbc:gizmosql://localhost:31337/?user=test&password=secret")
+            .orElseThrow(() -> new RuntimeException("URL was rejected"));
+
+    // Check size == the amount of args provided (scheme not included)
+    assertEquals(4, parsedArgs.size());
+
+    // Check host == the provided host
+    assertEquals(parsedArgs.get(ArrowFlightConnectionProperty.HOST.camelName()), "localhost");
+
+    // Check port == the provided port
+    assertEquals(parsedArgs.get(ArrowFlightConnectionProperty.PORT.camelName()), 31337);
+
+    // Check other parameters
+    assertEquals(parsedArgs.get("user"), "test");
+    assertEquals(parsedArgs.get("password"), "secret");
+  }
+
+  /** Tests that all three URL schemes are accepted by acceptsURL. */
+  @Test
+  public void testAcceptsAllUrlSchemes() {
+    final ArrowFlightJdbcDriver driver = new ArrowFlightJdbcDriver();
+
+    assertTrue(driver.acceptsURL("jdbc:gizmosql://localhost:31337"));
+    assertTrue(driver.acceptsURL("jdbc:arrow-flight-sql://localhost:31337"));
+    assertTrue(driver.acceptsURL("jdbc:arrow-flight://localhost:31337"));
+    assertFalse(driver.acceptsURL("jdbc:postgresql://localhost:5432"));
+    assertFalse(driver.acceptsURL("jdbc:mysql://localhost:3306"));
   }
 
   /**
