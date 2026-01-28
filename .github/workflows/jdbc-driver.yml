@@ -86,22 +86,16 @@ jobs:
         image: gizmodata/gizmosql:latest
         ports:
           - 31337:31337
-          - 31338:31338
         env:
           GIZMOSQL_USERNAME: gizmosql_user
           GIZMOSQL_PASSWORD: gizmosql_password
           DATABASE_FILENAME: /tmp/test.duckdb
           TLS_ENABLED: "0"
           PRINT_QUERIES: "1"
-          LOG_LEVEL: debug
-        options: >-
-          --health-cmd "curl -f http://localhost:31338/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
 
     steps:
+      - name: Wait for GizmoSQL to start
+        run: sleep 10
       - name: Checkout
         uses: actions/checkout@v4
         with:
