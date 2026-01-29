@@ -220,6 +220,9 @@ under the License.
             <artifactId>maven-failsafe-plugin</artifactId>
             <configuration>
               <enableAssertions>false</enableAssertions>
+              <includes>
+                <include>**/*IT.java</include>
+              </includes>
               <systemPropertyVariables>
                 <arrow.test.dataRoot>${project.basedir}/../../testing/data</arrow.test.dataRoot>
               </systemPropertyVariables>
