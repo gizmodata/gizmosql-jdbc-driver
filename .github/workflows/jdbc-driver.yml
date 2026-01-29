@@ -200,10 +200,20 @@ jobs:
       - name: Set release version
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
-          # Add explicit version to gizmosql-jdbc-driver module (it inherits from parent by default)
-          sed -i "s|<artifactId>gizmosql-jdbc-driver</artifactId>|<artifactId>gizmosql-jdbc-driver</artifactId>\n  <version>${VERSION}</version>|" flight/flight-sql-jdbc-driver/pom.xml
+          # Pin arrow-bom to SNAPSHOT version so versions:set doesn't try to resolve it
+          python3 -c "
+          import re, pathlib
+          pom = pathlib.Path('pom.xml').read_text()
+          pom = re.sub(
+              r'(<artifactId>arrow-bom</artifactId>\s*<version>)\\\$\{project\.version\}(</version>)',
+              r'\g<1>19.0.0-SNAPSHOT\2',
+              pom
+          )
+          pathlib.Path('pom.xml').write_text(pom)
+          "
+          ./mvnw -B -ntp versions:set -DnewVersion=${VERSION} -DgenerateBackupPoms=false
 
-      - name: Build all dependencies
+      - name: Build all modules
         run: |
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-driver \
