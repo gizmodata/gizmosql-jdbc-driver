@@ -134,7 +134,7 @@ jobs:
             -pl flight/flight-sql-jdbc-core \
             -Pintegration-tests \
             -Dit.test="org.apache.arrow.driver.jdbc.gizmosql.*" \
-            failsafe:integration-test failsafe:verify
+            test-compile failsafe:integration-test failsafe:verify
 
   publish-snapshot:
     name: Publish Snapshot
