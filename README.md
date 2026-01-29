@@ -19,6 +19,8 @@
 
 # GizmoSQL JDBC Driver
 
+[![Maven Central](https://img.shields.io/maven-central/v/com.gizmodata/gizmosql-jdbc-driver)](https://central.sonatype.com/artifact/com.gizmodata/gizmosql-jdbc-driver)
+
 A JDBC driver for [GizmoSQL](https://github.com/gizmodata/gizmosql), based on Arrow Flight SQL.
 
 This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-java).
