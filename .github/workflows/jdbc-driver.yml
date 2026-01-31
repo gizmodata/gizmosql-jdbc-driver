@@ -61,17 +61,20 @@ jobs:
             -am \
             -DskipTests \
             $EXTRA_ARGS \
-            package
+            install
 
       - name: Run Unit Tests
         run: |
           EXTRA_ARGS=""
+          TEST_MODULES="flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver"
           if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
             EXTRA_ARGS="-Dspotless.check.skip=true"
+            # Skip flight-sql-jdbc-core unit tests on JDK 25+ (Mockito/ByteBuddy incompatible);
+            # integration tests provide coverage against a real server
+            TEST_MODULES="flight/flight-sql-jdbc-driver"
           fi
           ./mvnw -B -ntp \
-            -pl flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver \
-            -am \
+            -pl $TEST_MODULES \
             $EXTRA_ARGS \
             test
 
