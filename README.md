@@ -33,7 +33,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 <dependency>
     <groupId>com.gizmodata</groupId>
     <artifactId>gizmosql-jdbc-driver</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -41,7 +41,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 
 ```groovy
 dependencies {
-    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.0.0'
+    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.1.0'
 }
 ```
 
