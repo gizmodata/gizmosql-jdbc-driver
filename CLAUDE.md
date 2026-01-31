@@ -12,8 +12,13 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 
 ## Important: Spotless Formatting
 - The project uses `spotless-maven-plugin` with Google Java Format
-- **Always run `./mvnw spotless:apply -pl <module>` before committing** to avoid CI failures
-- Or run `./mvnw spotless:check -pl <module>` to verify (use `clean` first to bust cache)
+- **Always run `./mvnw clean spotless:apply -pl <module>` before committing** to avoid CI failures
+- Use `clean` to bust the spotless cache — without it, cached results may hide violations
+- Or run `./mvnw clean spotless:check -pl <module>` to verify
+- Google Java Format rules to watch for:
+  - Javadoc: second paragraph in a `/** */` block needs `<p>` tag (e.g., ` * <p>Second paragraph...`)
+  - Standard Google Java style: 2-space indent, specific import ordering, etc.
+- Spotless is incompatible with JDK 25+ (google-java-format uses internal JDK APIs) — CI skips it on JDK 25
 
 ## Module Structure (relevant modules)
 - `memory/memory-netty-buffer-patch` — Custom Netty buffer wrappers (`UnsafeDirectLittleEndian`, `PooledByteBufAllocatorL`)
