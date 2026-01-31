@@ -51,17 +51,28 @@ jobs:
 
       - name: Build JDBC Driver
         run: |
+          # Skip spotless on JDK 25+ (google-java-format uses internal JDK APIs that changed)
+          SPOTLESS_SKIP=""
+          if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
+            SPOTLESS_SKIP="-Dspotless.check.skip=true"
+          fi
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
+            $SPOTLESS_SKIP \
             package
 
       - name: Run Unit Tests
         run: |
+          SPOTLESS_SKIP=""
+          if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
+            SPOTLESS_SKIP="-Dspotless.check.skip=true"
+          fi
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver \
             -am \
+            $SPOTLESS_SKIP \
             test
 
       - name: Upload JDBC Driver JAR
@@ -117,10 +128,15 @@ jobs:
 
       - name: Build JDBC Driver
         run: |
+          SPOTLESS_SKIP=""
+          if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
+            SPOTLESS_SKIP="-Dspotless.check.skip=true"
+          fi
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
+            $SPOTLESS_SKIP \
             install
 
       - name: Run Integration Tests
