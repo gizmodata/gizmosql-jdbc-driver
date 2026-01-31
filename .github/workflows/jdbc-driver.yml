@@ -69,10 +69,10 @@ jobs:
       - name: Verify bytecode fix (PooledByteBufAllocatorL)
         if: matrix.jdk == 11
         run: |
-          JAR=$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar | head -1)
+          JAR="$(pwd)/$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*-SNAPSHOT.jar | grep -v sources | grep -v javadoc | grep -v tests | head -1)"
+          echo "Checking JAR: $JAR"
           mkdir -p /tmp/verify && cd /tmp/verify
           jar xf "$JAR" org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class
-          # Verify the instanceof check uses AbstractByteBuf, not PooledUnsafeDirectByteBuf
           if javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep -q 'PooledUnsafeDirectByteBuf'; then
             echo "ERROR: Bytecode still references PooledUnsafeDirectByteBuf - build cache is stale!"
             javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep 'PooledUnsafe\|AbstractByteBuf'
