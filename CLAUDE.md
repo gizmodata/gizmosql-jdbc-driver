@@ -63,6 +63,10 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 - TLS connection tests (`ConnectionTlsTest`, etc.) fail in act/Docker due to missing cert files — these pass on GitHub CI
 - Always validate with act before pushing to avoid burning GitHub Actions minutes
 
+## Release Checklist
+- Update version references in `README.md` (Maven, Gradle, badge) before tagging
+- Update `gizmosqlline` pom.xml and README with new driver version after Maven Central publish
+
 ## Common Gotchas
 - Rebuilding only `memory-netty-buffer-patch` is NOT enough — must rebuild the full shaded driver with `-am`
 - The shaded JAR relocates all classes under `org.apache.arrow.driver.jdbc.shaded.*`
