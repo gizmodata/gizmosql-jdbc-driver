@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * The underlying class we use for little-endian access to memory. Is used underneath ArrowBufs to
  * abstract away the Netty classes and underlying Netty memory management.
  *
- * Changed to extend MutableWrappedByteBuf instead of WrappedByteBuf because Netty 4.2.x made
+ * <p>Changed to extend MutableWrappedByteBuf instead of WrappedByteBuf because Netty 4.2.x made
  * memoryAddress() and other methods final in WrappedByteBuf.
  */
 public class UnsafeDirectLittleEndian extends MutableWrappedByteBuf {
