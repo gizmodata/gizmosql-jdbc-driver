@@ -67,6 +67,36 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 - Update version references in `README.md` (Maven, Gradle, badge) before tagging
 - Update `gizmosqlline` pom.xml and README with new driver version after Maven Central publish
 
+## Current Work: JDK 25 Bytecode Fix (Jan 31 2026)
+
+### Problem
+`PooledByteBufAllocatorL.java` was fixed to use `AbstractByteBuf` instead of `PooledUnsafeDirectByteBuf`, but published JARs (v1.3.0 through v1.4.0) all had stale bytecode.
+
+### Root Cause (CONFIRMED)
+`memory-netty-buffer-patch` is NOT in the `-am` reactor for `flight-sql-jdbc-driver` because it is a **shade-time dependency**, not a Maven dependency. The shade plugin pulls it from `~/.m2/repository`. The publish-release job never compiled it from source.
+
+### Fix Applied (committed to main, not yet successfully published)
+In `.github/workflows/jdbc-driver.yml` publish-release job: build `memory-netty-buffer-patch` as a **separate Maven invocation BEFORE** `versions:set`, so the freshly compiled `19.0.0-SNAPSHOT` jar gets installed to `~/.m2/repository`. Then the shade plugin picks up the correct bytecode.
+
+### Local Verification Status
+- Source code is correct: `PooledByteBufAllocatorL.java` uses `AbstractByteBuf` everywhere
+- Unshaded compiled class (in `memory-netty-buffer-patch/target/classes/`) has `AbstractByteBuf` references, zero `PooledUnsafeDirectByteBuf` references
+- Local build of shaded driver JAR needs to be tested on JDK 25 against gizmosqlline
+
+### Next Steps
+1. Build driver locally: already done, JAR at `flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-19.0.0-SNAPSHOT.jar`
+2. Build gizmosqlline using local SNAPSHOT driver (change pom.xml to `19.0.0-SNAPSHOT`)
+3. Test gizmosqlline on JDK 25 against local GizmoSQL (already running on port 31337)
+4. If it works, tag driver as v1.4.1 (CI fix already pushed to main)
+5. Wait for Maven Central sync, then update gizmosqlline and tag
+
+### Tags Published to Maven Central (all have stale bytecode)
+- v1.3.0, v1.3.1, v1.3.2, v1.4.0 — all have `PooledUnsafeDirectByteBuf` casts
+- v1.4.1 tag was deleted after publish-release failed (version mismatch error)
+
+### Key Insight About Purge Path
+The Maven artifactId is `arrow-memory-netty-buffer-patch` (with `arrow-` prefix). The module directory is `memory/memory-netty-buffer-patch`. The purge path must be `~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch`.
+
 ## Common Gotchas
 - **Develocity build cache (REMOVED)**: The Develocity Maven extension was removed from `.mvn/extensions.xml` because its local build cache persisted stale compiled classes across GitHub Actions runs (restored via `setup-java` Maven cache). Neither `clean` nor `-Ddevelocity.cache.local.enabled=false` prevented it. v1.3.0 and v1.3.1 were published with stale bytecode as a result. CI now purges `~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch` before builds and has a bytecode verification step.
 - Rebuilding only `memory-netty-buffer-patch` is NOT enough — must rebuild the full shaded driver with `-am`
