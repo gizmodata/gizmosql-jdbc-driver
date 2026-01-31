@@ -1273,7 +1273,7 @@ under the License.
       </build>
     </profile>
     <profile>
-      <!-- JDK 16+ requires --enable-native-access for sun.misc.Unsafe -->
+      <!-- JDK 16+ needs enable-native-access for sun.misc.Unsafe -->
       <id>jdk16-native-access</id>
       <activation>
         <jdk>[16,)</jdk>
