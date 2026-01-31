@@ -49,6 +49,20 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 - Concurrency group cancels in-progress runs on same ref
 - Tag pushes trigger Maven Central publish + GitHub release
 
+## JDK 25+ Compatibility Notes
+- Netty 4.2.x sets `io.netty.noUnsafe=true` by default on JDK 25+ — must pass `-Dio.netty.noUnsafe=false`
+- JDK 25 requires `--sun-misc-unsafe-memory-access=allow` for sun.misc.Unsafe memory methods
+- JDK 16+ requires `--enable-native-access=ALL-UNNAMED` for native memory access
+- These are handled by Maven profiles `jdk16-native-access` and `jdk25-unsafe-access` in root pom.xml
+- Mockito/ByteBuddy cannot mock classes on JDK 25 — `flight-sql-jdbc-core` unit tests are skipped on JDK 25 (integration tests provide coverage)
+- H2 database (used by `arrow-jdbc` tests) is incompatible with JDK 25
+- XML comments in pom.xml must not contain `--` (double dashes) — Maven's XML parser rejects them
+
+## Local Testing with act
+- Use `act push -j build --matrix jdk:25 --detect-event` to test CI locally before pushing
+- TLS connection tests (`ConnectionTlsTest`, etc.) fail in act/Docker due to missing cert files — these pass on GitHub CI
+- Always validate with act before pushing to avoid burning GitHub Actions minutes
+
 ## Common Gotchas
 - Rebuilding only `memory-netty-buffer-patch` is NOT enough — must rebuild the full shaded driver with `-am`
 - The shaded JAR relocates all classes under `org.apache.arrow.driver.jdbc.shaded.*`
