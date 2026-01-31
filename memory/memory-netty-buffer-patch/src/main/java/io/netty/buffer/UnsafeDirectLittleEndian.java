@@ -42,7 +42,14 @@ public class UnsafeDirectLittleEndian extends WrappedByteBuf {
     super(buf);
 
     this.wrapped = buf;
-    this.memoryAddress = buf.memoryAddress();
+    // EmptyByteBuf and similar non-direct buffers do not support memoryAddress()
+    long addr;
+    try {
+      addr = buf.memoryAddress();
+    } catch (UnsupportedOperationException e) {
+      addr = 0;
+    }
+    this.memoryAddress = addr;
   }
 
   private long addr(int index) {
