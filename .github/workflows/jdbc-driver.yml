@@ -206,8 +206,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Build memory-netty-buffer-patch from source first (shade-time dep, not in -am reactor)
           ./mvnw -B -ntp \
-            -pl memory/memory-netty-buffer-patch,flight/flight-sql-jdbc-driver \
+            -pl memory/memory-netty-buffer-patch \
+            -am \
+            -DskipTests \
+            clean install
+          ./mvnw -B -ntp \
+            -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
             -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
@@ -248,6 +254,14 @@ jobs:
       - name: Purge cached memory modules
         run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
 
+      - name: Build memory-netty-buffer-patch from source
+        run: |
+          ./mvnw -B -ntp \
+            -pl memory/memory-netty-buffer-patch \
+            -am \
+            -DskipTests \
+            clean install
+
       - name: Set release version
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
@@ -267,7 +281,7 @@ jobs:
       - name: Build all modules
         run: |
           ./mvnw -B -ntp \
-            -pl memory/memory-netty-buffer-patch,flight/flight-sql-jdbc-driver \
+            -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
             clean install
