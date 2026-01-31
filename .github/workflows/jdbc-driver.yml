@@ -65,17 +65,17 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          EXTRA_ARGS=""
+          ARGS=()
           if [ "${{ matrix.jdk }}" -ge 16 ] 2>/dev/null; then
-            EXTRA_ARGS="$EXTRA_ARGS -Dsurefire.add-opens.argLine=\"--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED --enable-native-access=ALL-UNNAMED\""
+            ARGS+=("-Dsurefire.add-opens.argLine=--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED --enable-native-access=ALL-UNNAMED")
           fi
           if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
-            EXTRA_ARGS="$EXTRA_ARGS -Dspotless.check.skip=true"
+            ARGS+=("-Dspotless.check.skip=true")
           fi
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver \
             -am \
-            $EXTRA_ARGS \
+            "${ARGS[@]}" \
             test
 
       - name: Upload JDBC Driver JAR
@@ -149,14 +149,17 @@ jobs:
           GIZMOSQL_USERNAME: gizmosql_user
           GIZMOSQL_PASSWORD: gizmosql_password
         run: |
-          EXTRA_ARGS=""
+          ARGS=()
           if [ "${{ matrix.jdk }}" -ge 16 ] 2>/dev/null; then
-            EXTRA_ARGS="-Dsurefire.add-opens.argLine=\"--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED --enable-native-access=ALL-UNNAMED\""
+            ARGS+=("-Dsurefire.add-opens.argLine=--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED --enable-native-access=ALL-UNNAMED")
+          fi
+          if [ "${{ matrix.jdk }}" -ge 25 ] 2>/dev/null; then
+            ARGS+=("-Dspotless.check.skip=true")
           fi
           ./mvnw -B -ntp \
             -pl flight/flight-sql-jdbc-core \
             -Pintegration-tests \
-            $EXTRA_ARGS \
+            "${ARGS[@]}" \
             failsafe:integration-test failsafe:verify
 
   publish-snapshot:
