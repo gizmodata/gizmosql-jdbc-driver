@@ -50,7 +50,7 @@ jobs:
           cache: 'maven'
 
       - name: Purge cached memory modules
-        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
 
       - name: Build JDBC Driver
         run: |
@@ -148,7 +148,7 @@ jobs:
           cache: 'maven'
 
       - name: Purge cached memory modules
-        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
 
       - name: Build JDBC Driver
         run: |
@@ -200,14 +200,14 @@ jobs:
           cache: 'maven'
 
       - name: Purge cached memory modules
-        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
 
       - name: Build and Deploy to GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./mvnw -B -ntp \
-            -pl flight/flight-sql-jdbc-driver \
+            -pl memory/memory-netty-buffer-patch,flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
             -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
@@ -246,7 +246,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Purge cached memory modules
-        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
 
       - name: Set release version
         run: |
@@ -267,10 +267,24 @@ jobs:
       - name: Build all modules
         run: |
           ./mvnw -B -ntp \
-            -pl flight/flight-sql-jdbc-driver \
+            -pl memory/memory-netty-buffer-patch,flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
             clean install
+
+      - name: Verify bytecode fix (PooledByteBufAllocatorL)
+        run: |
+          JAR="$(pwd)/$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-[0-9]*.jar | grep -v sources | grep -v javadoc | grep -v tests | head -1)"
+          echo "Checking JAR: $JAR"
+          mkdir -p /tmp/verify-release && cd /tmp/verify-release
+          jar xf "$JAR" org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class
+          if javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep -q 'PooledUnsafeDirectByteBuf'; then
+            echo "ERROR: Release JAR has stale bytecode with PooledUnsafeDirectByteBuf!"
+            javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep 'PooledUnsafe\|AbstractByteBuf'
+            exit 1
+          else
+            echo "OK: Release JAR bytecode correctly uses AbstractByteBuf"
+          fi
 
       - name: Deploy to Maven Central
         env:
