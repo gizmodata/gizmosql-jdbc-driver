@@ -1272,5 +1272,15 @@ under the License.
         </plugins>
       </build>
     </profile>
+    <profile>
+      <!-- JDK 16+ requires --enable-native-access for sun.misc.Unsafe -->
+      <id>jdk16-native-access</id>
+      <activation>
+        <jdk>[16,)</jdk>
+      </activation>
+      <properties>
+        <surefire.add-opens.argLine>--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED --enable-native-access=ALL-UNNAMED</surefire.add-opens.argLine>
+      </properties>
+    </profile>
   </profiles>
 </project>
