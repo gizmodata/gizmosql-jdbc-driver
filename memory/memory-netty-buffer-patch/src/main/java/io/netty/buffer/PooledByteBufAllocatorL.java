@@ -99,7 +99,7 @@ public class PooledByteBufAllocatorL {
     }
 
     private AccountedUnsafeDirectLittleEndian(
-        PooledUnsafeDirectByteBuf buf, AtomicLong count, AtomicLong size) {
+        AbstractByteBuf buf, AtomicLong count, AtomicLong size) {
       super(buf);
       this.initialCapacity = buf.capacity();
       this.count = count;
@@ -171,19 +171,19 @@ public class PooledByteBufAllocatorL {
         } else {
           // within chunk, use arena.
           ByteBuf buf = directArena.allocate(cache, initialCapacity, maxCapacity);
-          if (!(buf instanceof PooledUnsafeDirectByteBuf)) {
+          if (!(buf instanceof AbstractByteBuf)) {
             fail();
           }
 
           if (!AssertionUtil.ASSERT_ENABLED) {
-            return new UnsafeDirectLittleEndian((PooledUnsafeDirectByteBuf) buf);
+            return new UnsafeDirectLittleEndian((AbstractByteBuf) buf);
           }
 
           normalBufferSize.addAndGet(buf.capacity());
           normalBufferCount.incrementAndGet();
 
           return new AccountedUnsafeDirectLittleEndian(
-              (PooledUnsafeDirectByteBuf) buf, normalBufferCount, normalBufferSize);
+              (AbstractByteBuf) buf, normalBufferCount, normalBufferSize);
         }
 
       } else {
