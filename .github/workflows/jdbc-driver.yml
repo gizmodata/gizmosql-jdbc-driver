@@ -24,7 +24,7 @@ permissions:
   packages: write
 
 env:
-  MAVEN_OPTS: -Xmx4g -XX:+UseG1GC
+  MAVEN_OPTS: -Xmx4g -XX:+UseG1GC -Ddevelocity.cache.local.enabled=false
 
 jobs:
   build:
