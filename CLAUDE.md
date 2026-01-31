@@ -68,6 +68,7 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 - Update `gizmosqlline` pom.xml and README with new driver version after Maven Central publish
 
 ## Common Gotchas
+- **Develocity build cache**: The project uses Gradle Enterprise/Develocity Maven extension (`.mvn/extensions.xml`) which caches compiled classes across builds. Always use `clean` in Maven commands to bust this cache when source files change, especially in CI publish steps
 - Rebuilding only `memory-netty-buffer-patch` is NOT enough — must rebuild the full shaded driver with `-am`
 - The shaded JAR relocates all classes under `org.apache.arrow.driver.jdbc.shaded.*`
 - JAR timestamps inside shaded JARs show original compile time, not rebuild time — don't trust them

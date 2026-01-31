@@ -61,7 +61,7 @@ jobs:
             -am \
             -DskipTests \
             $EXTRA_ARGS \
-            install
+            clean install
 
       - name: Run Unit Tests
         run: |
@@ -140,7 +140,7 @@ jobs:
             -am \
             -DskipTests \
             $EXTRA_ARGS \
-            install
+            clean install
 
       - name: Run Integration Tests
         env:
@@ -243,7 +243,7 @@ jobs:
             -pl flight/flight-sql-jdbc-driver \
             -am \
             -DskipTests \
-            install
+            clean install
 
       - name: Deploy to Maven Central
         env:
