@@ -24,7 +24,7 @@ permissions:
   packages: write
 
 env:
-  MAVEN_OPTS: -Xmx4g -XX:+UseG1GC -Ddevelocity.cache.local.enabled=false
+  MAVEN_OPTS: -Xmx4g -XX:+UseG1GC
 
 jobs:
   build:
@@ -49,6 +49,9 @@ jobs:
           java-version: ${{ matrix.jdk }}
           cache: 'maven'
 
+      - name: Purge cached memory modules
+        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+
       - name: Build JDBC Driver
         run: |
           EXTRA_ARGS=""
@@ -62,6 +65,21 @@ jobs:
             -DskipTests \
             $EXTRA_ARGS \
             clean install
+
+      - name: Verify bytecode fix (PooledByteBufAllocatorL)
+        if: matrix.jdk == 11
+        run: |
+          JAR=$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar | head -1)
+          mkdir -p /tmp/verify && cd /tmp/verify
+          jar xf "$JAR" org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class
+          # Verify the instanceof check uses AbstractByteBuf, not PooledUnsafeDirectByteBuf
+          if javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep -q 'PooledUnsafeDirectByteBuf'; then
+            echo "ERROR: Bytecode still references PooledUnsafeDirectByteBuf - build cache is stale!"
+            javap -v org/apache/arrow/driver/jdbc/shaded/io/netty/buffer/PooledByteBufAllocatorL\$InnerAllocator.class | grep 'PooledUnsafe\|AbstractByteBuf'
+            exit 1
+          else
+            echo "OK: Bytecode correctly uses AbstractByteBuf (no PooledUnsafeDirectByteBuf references)"
+          fi
 
       - name: Run Unit Tests
         run: |
@@ -129,6 +147,9 @@ jobs:
           java-version: ${{ matrix.jdk }}
           cache: 'maven'
 
+      - name: Purge cached memory modules
+        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+
       - name: Build JDBC Driver
         run: |
           EXTRA_ARGS=""
@@ -178,6 +199,9 @@ jobs:
           java-version: 11
           cache: 'maven'
 
+      - name: Purge cached memory modules
+        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
+
       - name: Build and Deploy to GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -220,6 +244,9 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Purge cached memory modules
+        run: rm -rf ~/.m2/repository/org/apache/arrow/memory-netty-buffer-patch ~/.m2/.develocity
 
       - name: Set release version
         run: |
