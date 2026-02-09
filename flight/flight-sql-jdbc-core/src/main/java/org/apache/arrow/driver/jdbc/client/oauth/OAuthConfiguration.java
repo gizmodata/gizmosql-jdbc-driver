@@ -239,6 +239,13 @@ public class OAuthConfiguration {
       return this;
     }
 
+    /**
+     * Sets the OAuth authorization endpoint URL.
+     *
+     * @param authorizationUrl the authorization endpoint URL
+     * @return this builder
+     * @throws SQLException if the URL is invalid
+     */
     public Builder authorizationUrl(@Nullable String authorizationUrl) throws SQLException {
       if (authorizationUrl == null || authorizationUrl.isEmpty()) {
         this.authorizationUri = null;
@@ -252,6 +259,7 @@ public class OAuthConfiguration {
       return this;
     }
 
+    /** Sets the OIDC issuer URL for endpoint auto-discovery. */
     public Builder oidcIssuer(@Nullable String oidcIssuer) {
       this.oidcIssuer = oidcIssuer;
       return this;

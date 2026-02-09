@@ -40,6 +40,11 @@ public class PkceGenerator {
     this(DEFAULT_VERIFIER_LENGTH);
   }
 
+  /**
+   * Creates a new PkceGenerator with a custom verifier length.
+   *
+   * @param verifierLength the length of the code verifier (43-128 characters)
+   */
   public PkceGenerator(int verifierLength) {
     if (verifierLength < 43 || verifierLength > 128) {
       throw new IllegalArgumentException("Verifier length must be between 43 and 128 characters");
