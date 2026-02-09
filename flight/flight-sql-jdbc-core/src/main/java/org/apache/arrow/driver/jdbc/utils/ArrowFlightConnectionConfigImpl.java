@@ -221,6 +221,39 @@ public final class ArrowFlightConnectionConfigImpl extends ConnectionConfigImpl 
    * @throws SQLException if the OAuth configuration is invalid
    */
   public @Nullable OAuthConfiguration getOauthConfiguration() throws SQLException {
+    // Check for OIDC issuer first (preferred, minimal config)
+    String oidcIssuer = ArrowFlightConnectionProperty.OIDC_ISSUER.getString(properties);
+    if (oidcIssuer != null) {
+      // OIDC mode: auto-configure authorization_code flow from issuer discovery
+      String clientId = ArrowFlightConnectionProperty.OIDC_CLIENT_ID.getString(properties);
+      if (clientId == null) {
+        clientId = ArrowFlightConnectionProperty.OAUTH_CLIENT_ID.getString(properties);
+      }
+      String scopes = ArrowFlightConnectionProperty.OIDC_SCOPES.getString(properties);
+      if (scopes == null) {
+        scopes = ArrowFlightConnectionProperty.OAUTH_SCOPE.getString(properties);
+        if (scopes == null) {
+          scopes = "openid";
+        }
+      }
+
+      String clientSecret = ArrowFlightConnectionProperty.OIDC_CLIENT_SECRET.getString(properties);
+      if (clientSecret == null) {
+        clientSecret = ArrowFlightConnectionProperty.OAUTH_CLIENT_SECRET.getString(properties);
+      }
+
+      return new OAuthConfiguration.Builder()
+          .flow("authorization_code")
+          .oidcIssuer(oidcIssuer)
+          .clientId(clientId)
+          .clientSecret(clientSecret)
+          .scope(scopes)
+          .tokenUri(ArrowFlightConnectionProperty.OAUTH_TOKEN_URI.getString(properties))
+          .authorizationUrl(
+              ArrowFlightConnectionProperty.OAUTH_AUTHORIZATION_URL.getString(properties))
+          .build();
+    }
+
     String flow = ArrowFlightConnectionProperty.OAUTH_FLOW.getString(properties);
     if (flow == null) {
       return null;
@@ -231,6 +264,9 @@ public final class ArrowFlightConnectionConfigImpl extends ConnectionConfigImpl 
         .clientId(ArrowFlightConnectionProperty.OAUTH_CLIENT_ID.getString(properties))
         .clientSecret(ArrowFlightConnectionProperty.OAUTH_CLIENT_SECRET.getString(properties))
         .tokenUri(ArrowFlightConnectionProperty.OAUTH_TOKEN_URI.getString(properties))
+        .authorizationUrl(
+            ArrowFlightConnectionProperty.OAUTH_AUTHORIZATION_URL.getString(properties))
+        .oidcIssuer(oidcIssuer)
         .scope(ArrowFlightConnectionProperty.OAUTH_SCOPE.getString(properties))
         .resource(ArrowFlightConnectionProperty.OAUTH_RESOURCE.getString(properties))
         .subjectToken(
@@ -275,6 +311,15 @@ public final class ArrowFlightConnectionConfigImpl extends ConnectionConfigImpl 
     OAUTH_TOKEN_URI("oauth.tokenUri", null, Type.STRING, false),
     OAUTH_SCOPE("oauth.scope", null, Type.STRING, false),
     OAUTH_RESOURCE("oauth.resource", null, Type.STRING, false),
+
+    // Authorization code flow properties
+    OAUTH_AUTHORIZATION_URL("oauth.authorizationUrl", null, Type.STRING, false),
+
+    // OIDC discovery properties (preferred - minimal config)
+    OIDC_ISSUER("oidc.issuer", null, Type.STRING, false),
+    OIDC_CLIENT_ID("oidc.clientId", null, Type.STRING, false),
+    OIDC_CLIENT_SECRET("oidc.clientSecret", null, Type.STRING, false),
+    OIDC_SCOPES("oidc.scopes", null, Type.STRING, false),
 
     // Token exchange specific properties
     OAUTH_EXCHANGE_SUBJECT_TOKEN("oauth.exchange.subjectToken", null, Type.STRING, false),

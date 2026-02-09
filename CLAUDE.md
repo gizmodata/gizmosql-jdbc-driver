@@ -64,8 +64,15 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 - Always validate with act before pushing to avoid burning GitHub Actions minutes
 
 ## Release Checklist
-- Update version references in `README.md` (Maven, Gradle, badge) before tagging
-- Update `gizmosqlline` pom.xml and README with new driver version after Maven Central publish
+
+Before tagging a new release:
+
+1. **Update `CHANGELOG.md`** — Add entries under a new version heading. Follow [Keep a Changelog](https://keepachangelog.com/) format.
+2. **Update `README.md`** — Update version references in Maven/Gradle snippets and the badge URL.
+3. **Run Spotless** — `./mvnw clean spotless:apply -pl flight/flight-sql-jdbc-core` to format all source.
+4. **Commit and push to `main`**.
+5. **Tag with `v<version>`** (e.g., `git tag v1.5.0 && git push origin v1.5.0`).
+6. **After Maven Central publish** — Update `gizmosqlline` pom.xml and README with new driver version.
 
 ## Stale Bytecode History (v1.3.0–v1.4.0)
 - `PooledByteBufAllocatorL.java` source was fixed to use `AbstractByteBuf` instead of `PooledUnsafeDirectByteBuf`, but v1.3.0 through v1.4.0 all shipped with stale bytecode

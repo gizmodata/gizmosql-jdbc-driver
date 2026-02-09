@@ -27,8 +27,11 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 /** Configuration class for OAuth settings parsed from connection properties. */
 public class OAuthConfiguration {
 
+  /** Sentinel grant type for the authorization code flow (PKCE). */
+  static final GrantType AUTHORIZATION_CODE_GRANT = new GrantType("authorization_code");
+
   private final GrantType grantType;
-  private final URI tokenUri;
+  private final @Nullable URI tokenUri;
   private final @Nullable String clientId;
   private final @Nullable String clientSecret;
   private final @Nullable String scope;
@@ -39,6 +42,8 @@ public class OAuthConfiguration {
   private final @Nullable String audience;
   private final @Nullable String resource;
   private final @Nullable String requestedTokenType;
+  private final @Nullable URI authorizationUri;
+  private final @Nullable String oidcIssuer;
 
   private OAuthConfiguration(Builder builder) throws SQLException {
     this.grantType = builder.grantType;
@@ -53,30 +58,45 @@ public class OAuthConfiguration {
     this.audience = builder.audience;
     this.resource = builder.resource;
     this.requestedTokenType = builder.requestedTokenType;
+    this.authorizationUri = builder.authorizationUri;
+    this.oidcIssuer = builder.oidcIssuer;
 
     validate();
   }
 
   private void validate() throws SQLException {
     Objects.requireNonNull(grantType, "OAuth grant type is required");
-    Objects.requireNonNull(tokenUri, "Token URI is required");
 
-    if (GrantType.CLIENT_CREDENTIALS.equals(grantType)) {
+    if (AUTHORIZATION_CODE_GRANT.equals(grantType)) {
+      // Authorization code flow: requires clientId; tokenUri and authorizationUri
+      // are either explicit or discovered from oidcIssuer
       if (clientId == null || clientId.isEmpty()) {
-        throw new SQLException("clientId is required for client_credentials flow");
+        throw new SQLException("clientId is required for authorization_code flow");
       }
-      if (clientSecret == null || clientSecret.isEmpty()) {
-        throw new SQLException("clientSecret is required for client_credentials flow");
-      }
-    } else if (GrantType.TOKEN_EXCHANGE.equals(grantType)) {
-      if (subjectToken == null || subjectToken.isEmpty()) {
-        throw new SQLException("subjectToken is required for token_exchange flow");
-      }
-      if (subjectTokenType == null || subjectTokenType.isEmpty()) {
-        throw new SQLException("subjectTokenType is required for token_exchange flow");
+      if (tokenUri == null && (oidcIssuer == null || oidcIssuer.isEmpty())) {
+        throw new SQLException(
+            "Either tokenUri+authorizationUrl or oidc.issuer is required for authorization_code flow");
       }
     } else {
-      throw new SQLException("Unsupported OAuth grant type: " + grantType);
+      Objects.requireNonNull(tokenUri, "Token URI is required");
+
+      if (GrantType.CLIENT_CREDENTIALS.equals(grantType)) {
+        if (clientId == null || clientId.isEmpty()) {
+          throw new SQLException("clientId is required for client_credentials flow");
+        }
+        if (clientSecret == null || clientSecret.isEmpty()) {
+          throw new SQLException("clientSecret is required for client_credentials flow");
+        }
+      } else if (GrantType.TOKEN_EXCHANGE.equals(grantType)) {
+        if (subjectToken == null || subjectToken.isEmpty()) {
+          throw new SQLException("subjectToken is required for token_exchange flow");
+        }
+        if (subjectTokenType == null || subjectTokenType.isEmpty()) {
+          throw new SQLException("subjectTokenType is required for token_exchange flow");
+        }
+      } else {
+        throw new SQLException("Unsupported OAuth grant type: " + grantType);
+      }
     }
   }
 
@@ -87,7 +107,36 @@ public class OAuthConfiguration {
    * @throws SQLException if the grant type is not supported or configuration is invalid
    */
   public OAuthTokenProvider createTokenProvider() throws SQLException {
-    if (GrantType.CLIENT_CREDENTIALS.equals(grantType)) {
+    if (AUTHORIZATION_CODE_GRANT.equals(grantType)) {
+      // Resolve endpoints: either explicit or via OIDC discovery
+      URI resolvedAuthUri = authorizationUri;
+      URI resolvedTokenUri = tokenUri;
+
+      if ((resolvedAuthUri == null || resolvedTokenUri == null)
+          && oidcIssuer != null
+          && !oidcIssuer.isEmpty()) {
+        OidcDiscovery discovery = OidcDiscovery.discover(oidcIssuer);
+        if (resolvedAuthUri == null) {
+          resolvedAuthUri = discovery.getAuthorizationEndpoint();
+        }
+        if (resolvedTokenUri == null) {
+          resolvedTokenUri = discovery.getTokenEndpoint();
+        }
+      }
+
+      if (resolvedAuthUri == null) {
+        throw new SQLException(
+            "Authorization endpoint could not be determined. "
+                + "Set oauth.authorizationUrl or oidc.issuer.");
+      }
+      if (resolvedTokenUri == null) {
+        throw new SQLException(
+            "Token endpoint could not be determined. Set oauth.tokenUri or oidc.issuer.");
+      }
+
+      return new AuthorizationCodeTokenProvider(
+          resolvedAuthUri, resolvedTokenUri, clientId, clientSecret, scope);
+    } else if (GrantType.CLIENT_CREDENTIALS.equals(grantType)) {
       return OAuthTokenProviders.clientCredentials()
           .tokenUri(tokenUri)
           .clientId(clientId)
@@ -120,7 +169,7 @@ public class OAuthConfiguration {
   /** Builder for OAuthConfiguration. */
   public static class Builder {
     private GrantType grantType;
-    private URI tokenUri;
+    private @Nullable URI tokenUri;
     private @Nullable String clientId;
     private @Nullable String clientSecret;
     private @Nullable String scope;
@@ -131,6 +180,8 @@ public class OAuthConfiguration {
     private @Nullable String audience;
     private @Nullable String resource;
     private @Nullable String requestedTokenType;
+    private @Nullable URI authorizationUri;
+    private @Nullable String oidcIssuer;
 
     /**
      * Sets the OAuth grant type from a string value.
@@ -148,16 +199,20 @@ public class OAuthConfiguration {
       }
       try {
         String normalized = flowStr.toLowerCase(Locale.ROOT);
-        // Map user-friendly names to URN format for token_exchange
+        // Map user-friendly names
         if ("token_exchange".equals(normalized)) {
           normalized = GrantType.TOKEN_EXCHANGE.getValue();
         }
-        GrantType parsed = GrantType.parse(normalized);
-        if (!parsed.equals(GrantType.CLIENT_CREDENTIALS)
-            && !parsed.equals(GrantType.TOKEN_EXCHANGE)) {
-          throw new SQLException("Unsupported OAuth flow: " + flowStr);
+        if ("authorization_code".equals(normalized)) {
+          this.grantType = AUTHORIZATION_CODE_GRANT;
+        } else {
+          GrantType parsed = GrantType.parse(normalized);
+          if (!parsed.equals(GrantType.CLIENT_CREDENTIALS)
+              && !parsed.equals(GrantType.TOKEN_EXCHANGE)) {
+            throw new SQLException("Unsupported OAuth flow: " + flowStr);
+          }
+          this.grantType = parsed;
         }
-        this.grantType = parsed;
       } catch (com.nimbusds.oauth2.sdk.ParseException e) {
         throw new SQLException("Invalid OAuth flow: " + flowStr, e);
       }
@@ -171,15 +226,34 @@ public class OAuthConfiguration {
      * @return this builder
      * @throws SQLException if the URI is invalid
      */
-    public Builder tokenUri(String tokenUri) throws SQLException {
+    public Builder tokenUri(@Nullable String tokenUri) throws SQLException {
       if (tokenUri == null || tokenUri.isEmpty()) {
-        throw new SQLException("Token URI cannot be null or empty");
+        this.tokenUri = null;
+        return this;
       }
       try {
         this.tokenUri = new URI(tokenUri);
       } catch (URISyntaxException e) {
         throw new SQLException("Invalid token URI: " + tokenUri, e);
       }
+      return this;
+    }
+
+    public Builder authorizationUrl(@Nullable String authorizationUrl) throws SQLException {
+      if (authorizationUrl == null || authorizationUrl.isEmpty()) {
+        this.authorizationUri = null;
+        return this;
+      }
+      try {
+        this.authorizationUri = new URI(authorizationUrl);
+      } catch (URISyntaxException e) {
+        throw new SQLException("Invalid authorization URL: " + authorizationUrl, e);
+      }
+      return this;
+    }
+
+    public Builder oidcIssuer(@Nullable String oidcIssuer) {
+      this.oidcIssuer = oidcIssuer;
       return this;
     }
 

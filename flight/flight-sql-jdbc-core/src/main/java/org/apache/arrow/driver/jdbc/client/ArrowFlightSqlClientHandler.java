@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthConfiguration;
-import org.apache.arrow.driver.jdbc.client.oauth.OAuthCredentialWriter;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthTokenProvider;
 import org.apache.arrow.driver.jdbc.client.utils.ClientAuthenticationUtils;
 import org.apache.arrow.driver.jdbc.client.utils.FlightClientCache;
@@ -652,7 +651,7 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
 
   /** Builder for {@link ArrowFlightSqlClientHandler}. */
   public static final class Builder {
-    static final String USER_AGENT_TEMPLATE = "JDBC Flight SQL Driver %s";
+    static final String USER_AGENT_TEMPLATE = "GizmoSQL JDBC Driver %s";
     static final String DEFAULT_VERSION = "(unknown or development build)";
 
     private final Set<FlightClientMiddleware.Factory> middlewareFactories = new HashSet<>();
@@ -1029,6 +1028,83 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
     }
 
     /**
+     * Wraps connection exceptions with user-friendly TLS diagnostic messages when the error appears
+     * to be TLS-related.
+     */
+    private static SQLException wrapWithTlsDiagnostic(Exception e, boolean clientUsedTls) {
+      String message = getFullExceptionMessage(e);
+      String lowerMessage = message.toLowerCase();
+
+      // Detect common TLS error patterns
+      if (lowerMessage.contains("ssl handshake")
+          || lowerMessage.contains("ssl_handshake")
+          || lowerMessage.contains("handshake_failure")) {
+        if (clientUsedTls) {
+          return new SQLException(
+              "Connection failed: TLS handshake error. This typically means the server's "
+                  + "certificate is not trusted. Check your 'tlsRootCerts' path or set "
+                  + "'disableCertificateVerification=true' for testing.",
+              e);
+        } else {
+          return new SQLException(
+              "Connection failed: Server appears to require TLS encryption. "
+                  + "Set 'useEncryption=true' in your connection properties.",
+              e);
+        }
+      }
+
+      if (lowerMessage.contains("certificate")
+          && (lowerMessage.contains("unknown")
+              || lowerMessage.contains("invalid")
+              || lowerMessage.contains("expired")
+              || lowerMessage.contains("untrusted")
+              || lowerMessage.contains("verify"))) {
+        return new SQLException(
+            "Connection failed: TLS certificate validation failed. "
+                + "Check your 'tlsRootCerts' path or set "
+                + "'disableCertificateVerification=true' for testing.",
+            e);
+      }
+
+      if (lowerMessage.contains("connection reset")
+          || lowerMessage.contains("connection refused")) {
+        if (clientUsedTls) {
+          return new SQLException(
+              "Connection failed: The server may not be configured for TLS. "
+                  + "Try setting 'useEncryption=false' or verify the server supports TLS.",
+              e);
+        }
+      }
+
+      if (lowerMessage.contains("alert_certificate_required")
+          || lowerMessage.contains("bad_certificate")
+          || (lowerMessage.contains("client")
+              && lowerMessage.contains("certificate")
+              && lowerMessage.contains("required"))) {
+        return new SQLException(
+            "Connection failed: Server requires mutual TLS (mTLS). "
+                + "Provide 'clientCertificate' and 'clientKey' connection properties.",
+            e);
+      }
+
+      // No TLS-specific pattern matched, return generic wrapped exception
+      return new SQLException(e);
+    }
+
+    private static String getFullExceptionMessage(Throwable t) {
+      StringBuilder sb = new StringBuilder();
+      Throwable current = t;
+      while (current != null) {
+        if (current.getMessage() != null) {
+          sb.append(current.getMessage()).append(" ");
+        }
+        sb.append(current.getClass().getSimpleName()).append(" ");
+        current = current.getCause();
+      }
+      return sb.toString();
+    }
+
+    /**
      * Builds a new {@link ArrowFlightSqlClientHandler} from the provided fields.
      *
      * @return a new client handler.
@@ -1105,8 +1181,14 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         final ArrayList<CallOption> credentialOptions = new ArrayList<>();
         // Authentication priority: OAuth > token > username/password
         if (oauthConfig != null) {
+          // Get the OAuth access token (may trigger browser login on first call)
           OAuthTokenProvider tokenProvider = oauthConfig.createTokenProvider();
-          credentialOptions.add(new CredentialCallOption(new OAuthCredentialWriter(tokenProvider)));
+          String accessToken = tokenProvider.getValidToken();
+          // Send via Basic auth handshake as username="token", password=<access-token>.
+          // This triggers the server's bootstrap token verification path (JWKS/static cert).
+          credentialOptions.add(
+              ClientAuthenticationUtils.getAuthenticate(
+                  client, "token", accessToken, authFactory, options.toArray(new CallOption[0])));
         } else if (isUsingUserPasswordAuth) {
           // If the authFactory has already been used for a handshake, use the existing
           // token.
@@ -1135,15 +1217,15 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
           | GeneralSecurityException
           | IOException
           | FlightRuntimeException e) {
-        final SQLException originalException = new SQLException(e);
+        final SQLException friendlyException = wrapWithTlsDiagnostic(e, useEncryption);
         if (client != null) {
           try {
             client.close();
           } catch (final InterruptedException interruptedException) {
-            originalException.addSuppressed(interruptedException);
+            friendlyException.addSuppressed(interruptedException);
           }
         }
-        throw originalException;
+        throw friendlyException;
       }
     }
   }

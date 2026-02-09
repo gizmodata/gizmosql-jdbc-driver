@@ -33,7 +33,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 <dependency>
     <groupId>com.gizmodata</groupId>
     <artifactId>gizmosql-jdbc-driver</artifactId>
-    <version>1.4.1</version>
+    <version>1.5.0</version>
 </dependency>
 ```
 
@@ -41,7 +41,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 
 ```groovy
 dependencies {
-    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.4.1'
+    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.5.0'
 }
 ```
 
@@ -108,6 +108,11 @@ The driver also accepts `jdbc:arrow-flight-sql://` for backward compatibility.
 | **Mutual TLS (mTLS)** | | |
 | `clientCertificate` | Path to PEM-encoded client certificate for mTLS | - |
 | `clientKey` | Path to PEM-encoded client private key for mTLS | - |
+| **OAuth / SSO (OIDC)** | | |
+| `oidc.issuer` | OIDC issuer URL (enables auto-discovery of endpoints) | - |
+| `oidc.clientId` | OAuth client ID | - |
+| `oidc.clientSecret` | OAuth client secret (required by some IdPs such as Google) | - |
+| `oidc.scopes` | OAuth scopes | `openid` |
 | **Advanced** | | |
 | `threadPoolSize` | Size of internal thread pool | `1` |
 | `retainCookies` | Retain cookies from initial connection | `true` |
