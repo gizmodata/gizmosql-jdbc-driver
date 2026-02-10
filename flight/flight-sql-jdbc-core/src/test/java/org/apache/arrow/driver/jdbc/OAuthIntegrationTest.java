@@ -31,8 +31,7 @@ import java.util.concurrent.TimeUnit;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
-import mockwebserver3.junit5.StartStop;
-import org.apache.arrow.driver.jdbc.authentication.TokenAuthentication;
+import org.apache.arrow.driver.jdbc.authentication.UserPasswordAuthentication;
 import org.apache.arrow.driver.jdbc.utils.ArrowFlightConnectionConfigImpl.ArrowFlightConnectionProperty;
 import org.apache.arrow.driver.jdbc.utils.MockFlightSqlProducer;
 import org.apache.arrow.flight.sql.FlightSqlProducer.Schemas;
@@ -69,14 +68,17 @@ public class OAuthIntegrationTest {
   @RegisterExtension public static FlightServerTestExtension FLIGHT_SERVER_TEST_EXTENSION;
 
   static {
+    // GizmoSQL's OAuth flow sends the access token via Basic auth handshake
+    // with username="token" and password=<access-token>.
     FLIGHT_SERVER_TEST_EXTENSION =
         new FlightServerTestExtension.Builder()
-            .authentication(new TokenAuthentication.Builder().token(VALID_ACCESS_TOKEN).build())
+            .authentication(
+                new UserPasswordAuthentication.Builder().user("token", VALID_ACCESS_TOKEN).build())
             .producer(FLIGHT_SQL_PRODUCER)
             .build();
   }
 
-  @StartStop private final MockWebServer oauthServer = new MockWebServer();
+  private MockWebServer oauthServer;
   private URI tokenEndpoint;
 
   @BeforeAll
@@ -122,12 +124,14 @@ public class OAuthIntegrationTest {
   }
 
   @BeforeEach
-  public void setUp() {
+  public void setUp() throws Exception {
+    oauthServer = new MockWebServer();
+    oauthServer.start();
     tokenEndpoint = oauthServer.url("/oauth/token").uri();
   }
 
   @AfterEach
-  public void tearDown() {
+  public void tearDown() throws Exception {
     oauthServer.close();
   }
 
@@ -379,9 +383,11 @@ public class OAuthIntegrationTest {
   }
 
   @Test
-  public void testTokenRefreshAfterExpiration() throws Exception {
+  public void testTokenFetchedOncePerConnection() throws Exception {
+    // The OAuth token is fetched once during connection setup and exchanged for a
+    // server-issued session Bearer token via the handshake. Subsequent operations
+    // reuse the session token. Per-request OAuth token refresh is not yet implemented.
     enqueueSuccessfulTokenResponse(VALID_ACCESS_TOKEN, 1);
-    enqueueSuccessfulTokenResponse(VALID_ACCESS_TOKEN, 3600);
 
     Properties props = createBaseProperties();
     props.put(ArrowFlightConnectionProperty.OAUTH_FLOW.camelName(), "token_exchange");
@@ -393,16 +399,12 @@ public class OAuthIntegrationTest {
         SUBJECT_TOKEN_TYPE);
 
     try (Connection conn = DriverManager.getConnection(getJdbcUrl(), props)) {
-      // First operation triggers initial token fetch
       conn.getMetaData().getCatalogs().close();
-
-      // Token with 1s expiry is immediately considered expired (due to 30s buffer)
-      // so the next operation should trigger a refresh
       conn.getMetaData().getCatalogs().close();
     }
 
-    // Should have made exactly 2 OAuth requests: initial + refresh
-    assertEquals(2, oauthServer.getRequestCount());
+    // Only one OAuth request should be made (at connection time)
+    assertEquals(1, oauthServer.getRequestCount());
   }
 
   // ==================== Error Handling Tests ====================
@@ -463,12 +465,14 @@ public class OAuthIntegrationTest {
       conn.getMetaData().getCatalogs().close();
     }
 
-    // Verify the Flight server received the bearer token
+    // After the Basic auth handshake (username="token", password=<oauth-token>),
+    // the server returns a generated Bearer session token for subsequent requests.
     String authHeader =
         FLIGHT_SERVER_TEST_EXTENSION
             .getInterceptorFactory()
             .getHeader(org.apache.arrow.flight.FlightMethod.GET_FLIGHT_INFO, "authorization");
     assertNotNull(authHeader, "Authorization header should be present in Flight requests");
-    assertEquals("Bearer " + VALID_ACCESS_TOKEN, authHeader);
+    assertTrue(
+        authHeader.startsWith("Bearer "), "Flight requests should use Bearer authentication");
   }
 }

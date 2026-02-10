@@ -1123,7 +1123,7 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         // Token should take priority since some apps pass in a username/password even
         // when a token
         // is provided
-        if (isUsingUserPasswordAuth) {
+        if (oauthConfig != null || isUsingUserPasswordAuth) {
           buildTimeMiddlewareFactories.add(authFactory);
         }
         final NettyClientBuilder clientBuilder = new NettyClientBuilder();
@@ -1213,6 +1213,15 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         return ArrowFlightSqlClientHandler.createNewHandler(
             getCacheKey(), client, this, credentialOptions, catalog, flightClientCache);
 
+      } catch (final SQLException e) {
+        if (client != null) {
+          try {
+            client.close();
+          } catch (final InterruptedException interruptedException) {
+            e.addSuppressed(interruptedException);
+          }
+        }
+        throw e;
       } catch (final IllegalArgumentException
           | GeneralSecurityException
           | IOException
