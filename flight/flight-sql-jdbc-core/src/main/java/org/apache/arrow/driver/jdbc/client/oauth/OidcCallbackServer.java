@@ -49,7 +49,7 @@ public class OidcCallbackServer implements AutoCloseable {
           + "align-items:center;height:100vh;margin:0;background:#f0f9ff}"
           + ".card{background:white;padding:2rem;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);"
           + "text-align:center;max-width:400px}"
-          + ".logo{width:96px;height:96px;margin-bottom:1rem}"
+          + ".logo{width:148px;height:148px;margin-bottom:1rem}"
           + "h1{color:#059669;margin-bottom:0.5rem}"
           + "p{color:#6b7280}</style></head>"
           + "<body><div class='card'>"
