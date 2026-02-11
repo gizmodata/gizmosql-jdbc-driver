@@ -4,13 +4,18 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.0] - Unreleased
+## [1.5.0] - 2026-02-11
 
 ### Added
-- **Server-side OAuth / SSO support:** Browser-based Single Sign-On for desktop tools like DBeaver and IntelliJ. Use `authType=external` to authenticate via the GizmoSQL server's OAuth flow — no client IDs, secrets, or OAuth configuration needed on the client side.
+- **Server-side OAuth / SSO support:** Browser-based Single Sign-On for desktop tools like DBeaver and IntelliJ. Set `authType=external` and `oauthServerPort=<port>` — the GizmoSQL server handles the entire OAuth code exchange as a confidential client. No client IDs, secrets, or OAuth configuration needed on the JDBC side.
+- **OAuth URL discovery handshake:** The driver automatically discovers the OAuth server URL (including correct HTTP/HTTPS scheme) from the GizmoSQL server, so it works correctly even when the OAuth port uses different TLS settings than the main Flight port.
 
 ### Changed
 - User-Agent string now reports `GizmoSQL JDBC Driver <version>` instead of `JDBC Flight SQL Driver <version>`.
+- Simplified OAuth connection properties: only `authType=external` and `oauthServerPort` are needed (removed client-side OIDC/PKCE properties).
+
+### Removed
+- Client-side OAuth flows (Authorization Code + PKCE, Client Credentials, Token Exchange) — replaced by server-side OAuth which is simpler and more secure.
 
 ### Fixed
 - Improved TLS error messages: connection failures due to TLS misconfiguration now include actionable guidance (e.g., suggesting `useEncryption=true` or `disableCertificateVerification=true`).
