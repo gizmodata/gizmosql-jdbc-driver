@@ -1265,15 +1265,27 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         FlightClient client,
         ClientIncomingAuthHeaderMiddleware.Factory authFactory,
         OAuthDiscoveryMiddleware.Factory discoveryFactory,
-        Set<CallOption> options) {
+        Set<CallOption> options)
+        throws SQLException {
       try {
         ClientAuthenticationUtils.getAuthenticate(
             client, "__discover__", "", authFactory, options.toArray(new CallOption[0]));
         if (discoveryFactory != null) {
           return discoveryFactory.getDiscoveredOAuthUrl();
         }
+      } catch (FlightRuntimeException e) {
+        // The server explicitly told us OAuth is not configured — fail fast with a clear message.
+        String msg = e.getMessage();
+        if (msg != null && msg.contains("OAuth is not enabled")) {
+          throw new SQLException(
+              "Server-side OAuth (authType=external) is not available: "
+                  + "the GizmoSQL server does not have OAuth configured. "
+                  + "Check that --oauth-client-id and --oauth-client-secret are set on the server.",
+              e);
+        }
+        LOGGER.debug("OAuth URL discovery not supported by server: {}", msg);
       } catch (Exception e) {
-        LOGGER.debug("OAuth URL discovery not supported by server: {}", e.getMessage());
+        LOGGER.debug("OAuth URL discovery failed: {}", e.getMessage());
       }
       return null;
     }

@@ -191,8 +191,16 @@ public class ServerSideOAuthTokenProvider implements OAuthTokenProvider {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new SQLException("OAuth authentication interrupted", e);
+    } catch (java.net.ConnectException e) {
+      throw new SQLException(
+          "Could not connect to OAuth server at "
+              + oauthBaseUrl
+              + ". Verify that the GizmoSQL server has OAuth configured "
+              + "(--oauth-client-id, --oauth-client-secret) and is running.",
+          e);
     } catch (Exception e) {
-      throw new SQLException("Server-side OAuth authentication failed: " + e.getMessage(), e);
+      String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+      throw new SQLException("Server-side OAuth authentication failed: " + detail, e);
     }
   }
 
