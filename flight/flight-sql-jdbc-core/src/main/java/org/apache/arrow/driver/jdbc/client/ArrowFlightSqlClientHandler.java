@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthConfiguration;
+import org.apache.arrow.driver.jdbc.client.oauth.OAuthDiscoveryMiddleware;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthTokenProvider;
 import org.apache.arrow.driver.jdbc.client.utils.ClientAuthenticationUtils;
 import org.apache.arrow.driver.jdbc.client.utils.FlightClientCache;
@@ -1135,6 +1136,12 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         }
 
         buildTimeMiddlewareFactories.add(new ClientCookieMiddleware.Factory());
+        // Register discovery middleware to capture the OAuth URL from server response headers.
+        OAuthDiscoveryMiddleware.Factory discoveryFactory = null;
+        if (oauthConfig != null) {
+          discoveryFactory = new OAuthDiscoveryMiddleware.Factory();
+          buildTimeMiddlewareFactories.add(discoveryFactory);
+        }
         buildTimeMiddlewareFactories.forEach(clientBuilder::intercept);
         if (useEncryption) {
           clientBuilder.useTls();
@@ -1181,8 +1188,18 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         final ArrayList<CallOption> credentialOptions = new ArrayList<>();
         // Authentication priority: OAuth > token > username/password
         if (oauthConfig != null) {
+          // Discovery handshake: ask the server for the OAuth URL (scheme + host + port).
+          // This lets the server advertise whether OAuth uses HTTP or HTTPS, avoiding the
+          // need for the client to guess based on the Flight server's TLS setting.
+          OAuthTokenProvider tokenProvider;
+          String discoveredUrl = discoverOAuthUrl(client, authFactory, discoveryFactory, options);
+          if (discoveredUrl != null) {
+            LOGGER.info("Discovered OAuth URL from server: {}", discoveredUrl);
+            tokenProvider = oauthConfig.createTokenProviderWithUrl(discoveredUrl);
+          } else {
+            tokenProvider = oauthConfig.createTokenProvider();
+          }
           // Get the OAuth access token (may trigger browser login on first call)
-          OAuthTokenProvider tokenProvider = oauthConfig.createTokenProvider();
           String accessToken = tokenProvider.getValidToken();
           // Send via Basic auth handshake as username="token", password=<access-token>.
           // This triggers the server's bootstrap token verification path (JWKS/static cert).
@@ -1236,6 +1253,29 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
         }
         throw friendlyException;
       }
+    }
+
+    /**
+     * Performs an OAuth discovery handshake with the server. Sends {@code username="__discover__"}
+     * via Basic Auth; the server responds with the OAuth URL in a custom gRPC header.
+     *
+     * @return the discovered OAuth URL, or null if the server does not support discovery
+     */
+    private @Nullable String discoverOAuthUrl(
+        FlightClient client,
+        ClientIncomingAuthHeaderMiddleware.Factory authFactory,
+        OAuthDiscoveryMiddleware.Factory discoveryFactory,
+        Set<CallOption> options) {
+      try {
+        ClientAuthenticationUtils.getAuthenticate(
+            client, "__discover__", "", authFactory, options.toArray(new CallOption[0]));
+        if (discoveryFactory != null) {
+          return discoveryFactory.getDiscoveredOAuthUrl();
+        }
+      } catch (Exception e) {
+        LOGGER.debug("OAuth URL discovery not supported by server: {}", e.getMessage());
+      }
+      return null;
     }
   }
 }

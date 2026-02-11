@@ -215,70 +215,26 @@ public final class ArrowFlightConnectionConfigImpl extends ConnectionConfigImpl 
   }
 
   /**
-   * Returns OAuth configuration if oauth.flow is specified, null otherwise.
+   * Returns OAuth configuration if authType=external is specified, null otherwise.
    *
    * @return the OAuth configuration or null
    * @throws SQLException if the OAuth configuration is invalid
    */
   public @Nullable OAuthConfiguration getOauthConfiguration() throws SQLException {
-    // Check for OIDC issuer first (preferred, minimal config)
-    String oidcIssuer = ArrowFlightConnectionProperty.OIDC_ISSUER.getString(properties);
-    if (oidcIssuer != null) {
-      // OIDC mode: auto-configure authorization_code flow from issuer discovery
-      String clientId = ArrowFlightConnectionProperty.OIDC_CLIENT_ID.getString(properties);
-      if (clientId == null) {
-        clientId = ArrowFlightConnectionProperty.OAUTH_CLIENT_ID.getString(properties);
-      }
-      String scopes = ArrowFlightConnectionProperty.OIDC_SCOPES.getString(properties);
-      if (scopes == null) {
-        scopes = ArrowFlightConnectionProperty.OAUTH_SCOPE.getString(properties);
-        if (scopes == null) {
-          scopes = "openid";
-        }
-      }
-
-      String clientSecret = ArrowFlightConnectionProperty.OIDC_CLIENT_SECRET.getString(properties);
-      if (clientSecret == null) {
-        clientSecret = ArrowFlightConnectionProperty.OAUTH_CLIENT_SECRET.getString(properties);
-      }
-
-      return new OAuthConfiguration.Builder()
-          .flow("authorization_code")
-          .oidcIssuer(oidcIssuer)
-          .clientId(clientId)
-          .clientSecret(clientSecret)
-          .scope(scopes)
-          .tokenUri(ArrowFlightConnectionProperty.OAUTH_TOKEN_URI.getString(properties))
-          .authorizationUrl(
-              ArrowFlightConnectionProperty.OAUTH_AUTHORIZATION_URL.getString(properties))
-          .build();
-    }
-
-    String flow = ArrowFlightConnectionProperty.OAUTH_FLOW.getString(properties);
-    if (flow == null) {
+    String authType = ArrowFlightConnectionProperty.AUTH_TYPE.getString(properties);
+    if (!"external".equalsIgnoreCase(authType)) {
       return null;
     }
 
+    String scheme = useEncryption() ? "https" : "http";
+    String host = getHost();
+    int oauthPort = ArrowFlightConnectionProperty.OAUTH_SERVER_PORT.getInteger(properties);
+    String oauthServerUrl = scheme + "://" + host + ":" + oauthPort;
+    boolean disableCertVerify = getDisableCertificateVerification();
+
     return new OAuthConfiguration.Builder()
-        .flow(flow)
-        .clientId(ArrowFlightConnectionProperty.OAUTH_CLIENT_ID.getString(properties))
-        .clientSecret(ArrowFlightConnectionProperty.OAUTH_CLIENT_SECRET.getString(properties))
-        .tokenUri(ArrowFlightConnectionProperty.OAUTH_TOKEN_URI.getString(properties))
-        .authorizationUrl(
-            ArrowFlightConnectionProperty.OAUTH_AUTHORIZATION_URL.getString(properties))
-        .oidcIssuer(oidcIssuer)
-        .scope(ArrowFlightConnectionProperty.OAUTH_SCOPE.getString(properties))
-        .resource(ArrowFlightConnectionProperty.OAUTH_RESOURCE.getString(properties))
-        .subjectToken(
-            ArrowFlightConnectionProperty.OAUTH_EXCHANGE_SUBJECT_TOKEN.getString(properties))
-        .subjectTokenType(
-            ArrowFlightConnectionProperty.OAUTH_EXCHANGE_SUBJECT_TOKEN_TYPE.getString(properties))
-        .actorToken(ArrowFlightConnectionProperty.OAUTH_EXCHANGE_ACTOR_TOKEN.getString(properties))
-        .actorTokenType(
-            ArrowFlightConnectionProperty.OAUTH_EXCHANGE_ACTOR_TOKEN_TYPE.getString(properties))
-        .audience(ArrowFlightConnectionProperty.OAUTH_EXCHANGE_AUDIENCE.getString(properties))
-        .requestedTokenType(
-            ArrowFlightConnectionProperty.OAUTH_EXCHANGE_REQUESTED_TOKEN_TYPE.getString(properties))
+        .oauthServerUrl(oauthServerUrl)
+        .disableCertificateVerification(disableCertVerify)
         .build();
   }
 
@@ -304,31 +260,9 @@ public final class ArrowFlightConnectionConfigImpl extends ConnectionConfigImpl 
     CONNECT_TIMEOUT_MILLIS("connectTimeoutMs", 10000, Type.NUMBER, false),
     USE_CLIENT_CACHE("useClientCache", true, Type.BOOLEAN, false),
 
-    // OAuth configuration properties
-    OAUTH_FLOW("oauth.flow", null, Type.STRING, false),
-    OAUTH_CLIENT_ID("oauth.clientId", null, Type.STRING, false),
-    OAUTH_CLIENT_SECRET("oauth.clientSecret", null, Type.STRING, false),
-    OAUTH_TOKEN_URI("oauth.tokenUri", null, Type.STRING, false),
-    OAUTH_SCOPE("oauth.scope", null, Type.STRING, false),
-    OAUTH_RESOURCE("oauth.resource", null, Type.STRING, false),
-
-    // Authorization code flow properties
-    OAUTH_AUTHORIZATION_URL("oauth.authorizationUrl", null, Type.STRING, false),
-
-    // OIDC discovery properties (preferred - minimal config)
-    OIDC_ISSUER("oidc.issuer", null, Type.STRING, false),
-    OIDC_CLIENT_ID("oidc.clientId", null, Type.STRING, false),
-    OIDC_CLIENT_SECRET("oidc.clientSecret", null, Type.STRING, false),
-    OIDC_SCOPES("oidc.scopes", null, Type.STRING, false),
-
-    // Token exchange specific properties
-    OAUTH_EXCHANGE_SUBJECT_TOKEN("oauth.exchange.subjectToken", null, Type.STRING, false),
-    OAUTH_EXCHANGE_SUBJECT_TOKEN_TYPE("oauth.exchange.subjectTokenType", null, Type.STRING, false),
-    OAUTH_EXCHANGE_ACTOR_TOKEN("oauth.exchange.actorToken", null, Type.STRING, false),
-    OAUTH_EXCHANGE_ACTOR_TOKEN_TYPE("oauth.exchange.actorTokenType", null, Type.STRING, false),
-    OAUTH_EXCHANGE_AUDIENCE("oauth.exchange.aud", null, Type.STRING, false),
-    OAUTH_EXCHANGE_REQUESTED_TOKEN_TYPE(
-        "oauth.exchange.requestedTokenType", null, Type.STRING, false),
+    // Server-side OAuth properties
+    AUTH_TYPE("authType", null, Type.STRING, false),
+    OAUTH_SERVER_PORT("oauthServerPort", 31339, Type.NUMBER, false),
     ;
 
     private final String camelName;

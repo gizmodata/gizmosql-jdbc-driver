@@ -108,11 +108,8 @@ The driver also accepts `jdbc:arrow-flight-sql://` for backward compatibility.
 | **Mutual TLS (mTLS)** | | |
 | `clientCertificate` | Path to PEM-encoded client certificate for mTLS | - |
 | `clientKey` | Path to PEM-encoded client private key for mTLS | - |
-| **OAuth / SSO (OIDC)** | | |
-| `oidc.issuer` | OIDC issuer URL (enables auto-discovery of endpoints) | - |
-| `oidc.clientId` | OAuth client ID | - |
-| `oidc.clientSecret` | OAuth client secret (required by some IdPs such as Google) | - |
-| `oidc.scopes` | OAuth scopes | `openid` |
+| **OAuth / SSO** | | |
+| `authType` | Set to `external` to use server-side OAuth (browser-based SSO) | - |
 | **Advanced** | | |
 | `threadPoolSize` | Size of internal thread pool | `1` |
 | `retainCookies` | Retain cookies from initial connection | `true` |

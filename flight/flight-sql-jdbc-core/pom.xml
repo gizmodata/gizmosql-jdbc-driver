@@ -27,7 +27,7 @@ under the License.
 
   <artifactId>flight-sql-jdbc-core</artifactId>
   <packaging>jar</packaging>
-  <name>Arrow Flight SQL JDBC Driver Core</name>
+  <name>GizmoSQL JDBC Driver</name>
   <description>Core implementation of JDBC driver based on Arrow Flight SQL.</description>
   <url>https://arrow.apache.org</url>
 
@@ -180,14 +180,9 @@ under the License.
     </dependency>
 
     <dependency>
-      <groupId>com.nimbusds</groupId>
-      <artifactId>oauth2-oidc-sdk</artifactId>
-      <version>11.20.1</version>
-    </dependency>
-    <dependency>
-      <groupId>com.nimbusds</groupId>
-      <artifactId>nimbus-jose-jwt</artifactId>
-      <version>9.40</version>
+      <groupId>net.minidev</groupId>
+      <artifactId>json-smart</artifactId>
+      <version>2.5.1</version>
     </dependency>
 
   </dependencies>
@@ -204,6 +199,7 @@ under the License.
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
+          <argLine>-Djava.net.preferIPv4Stack=true ${surefire.add-opens.argLine}</argLine>
           <enableAssertions>false</enableAssertions>
           <systemPropertyVariables>
             <arrow.test.dataRoot>${project.basedir}/../../testing/data</arrow.test.dataRoot>

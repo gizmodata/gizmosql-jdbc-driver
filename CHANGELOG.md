@@ -4,16 +4,10 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.0] - 2026-02-09
+## [1.5.0] - Unreleased
 
 ### Added
-- **OAuth / SSO support (OIDC Authorization Code + PKCE):** Browser-based Single Sign-On for desktop tools like DBeaver and IntelliJ. New connection properties: `oidc.issuer`, `oidc.clientId`, `oidc.clientSecret`, `oidc.scopes`.
-- OIDC auto-discovery: the driver fetches `.well-known/openid-configuration` to resolve authorization and token endpoints automatically.
-- PKCE (Proof Key for Code Exchange) with S256 challenge method for secure public-client flows.
-- Temporary localhost callback server to receive the authorization code from the IdP redirect.
-- Token caching and automatic refresh using refresh tokens.
-- Support for IdPs that require a client secret (e.g., Google Desktop apps) via `oidc.clientSecret`.
-- Prefer OIDC ID token (JWT) over opaque access token when both are returned by the IdP.
+- **Server-side OAuth / SSO support:** Browser-based Single Sign-On for desktop tools like DBeaver and IntelliJ. Use `authType=external` to authenticate via the GizmoSQL server's OAuth flow — no client IDs, secrets, or OAuth configuration needed on the client side.
 
 ### Changed
 - User-Agent string now reports `GizmoSQL JDBC Driver <version>` instead of `JDBC Flight SQL Driver <version>`.
