@@ -630,7 +630,7 @@ public class ConnectionTest {
               .getHeader(FlightMethod.HANDSHAKE, "user-agent");
 
       var expectedUserAgent =
-          "JDBC Flight SQL Driver " + driverVersion.getDriverVersion().versionString;
+          "GizmoSQL JDBC Driver " + driverVersion.getDriverVersion().versionString;
       // Driver appends version to grpc user-agent header. Assert the header starts
       // with the
       // expected
