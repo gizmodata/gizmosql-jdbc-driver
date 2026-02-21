@@ -271,13 +271,11 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
 
   @Override
   public void close() throws SQLException {
-    if (catalog.isPresent()) {
-      try {
-        sqlClient.closeSession(new CloseSessionRequest(), getOptions());
-      } catch (FlightRuntimeException fre) {
-        handleBenignCloseException(
-            fre, "Failed to close Flight SQL session.", "closing Flight SQL session");
-      }
+    try {
+      sqlClient.closeSession(new CloseSessionRequest(), getOptions());
+    } catch (FlightRuntimeException fre) {
+      handleBenignCloseException(
+          fre, "Failed to close Flight SQL session.", "closing Flight SQL session");
     }
     try {
       AutoCloseables.close(sqlClient);

@@ -4,6 +4,11 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.1] - 2026-02-21
+
+### Fixed
+- Always send `CloseSession` RPC when closing a JDBC connection. Previously, `CloseSession` was only sent if a catalog had been explicitly set, leaving server-side sessions open for most connections.
+
 ## [1.5.0] - 2026-02-11
 
 ### Added
