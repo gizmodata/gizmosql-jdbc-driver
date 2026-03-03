@@ -111,6 +111,7 @@ The driver also accepts `jdbc:arrow-flight-sql://` for backward compatibility.
 | **OAuth / SSO** | | |
 | `authType` | Set to `external` to use server-side OAuth (browser-based SSO) | - |
 | **Advanced** | | |
+| `catalog` | Default catalog to use for the connection | - |
 | `threadPoolSize` | Size of internal thread pool | `1` |
 | `retainCookies` | Retain cookies from initial connection | `true` |
 | `retainAuth` | Retain bearer tokens from initial connection | `true` |
