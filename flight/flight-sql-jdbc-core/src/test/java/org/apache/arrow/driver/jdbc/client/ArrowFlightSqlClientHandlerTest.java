@@ -75,6 +75,8 @@ public class ArrowFlightSqlClientHandlerTest {
     CallStatus unavailableError = new CallStatus(FlightStatusCode.UNAVAILABLE, null, null, null);
     CallStatus unimplementedError =
         new CallStatus(FlightStatusCode.UNIMPLEMENTED, null, null, null);
+    CallStatus unauthenticatedError =
+        new CallStatus(FlightStatusCode.UNAUTHENTICATED, null, null, null);
     CallStatus unknownError = new CallStatus(FlightStatusCode.UNKNOWN, null, null, null);
     return new Object[] {
       new Object[] {true, benignInternalError, true},
@@ -85,6 +87,8 @@ public class ArrowFlightSqlClientHandlerTest {
       new Object[] {false, unavailableError, true},
       new Object[] {true, unimplementedError, true},
       new Object[] {false, unimplementedError, true},
+      new Object[] {true, unauthenticatedError, true},
+      new Object[] {false, unauthenticatedError, true},
       new Object[] {true, unknownError, false},
       new Object[] {false, unknownError, false},
     };

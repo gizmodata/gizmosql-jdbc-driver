@@ -333,6 +333,7 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
   private boolean isBenignCloseException(FlightRuntimeException fre) {
     return fre.status().code().equals(FlightStatusCode.UNAVAILABLE)
         || fre.status().code().equals(FlightStatusCode.UNIMPLEMENTED)
+        || fre.status().code().equals(FlightStatusCode.UNAUTHENTICATED)
         || (fre.status().code().equals(FlightStatusCode.INTERNAL)
             && fre.getMessage() != null
             && fre.getMessage().contains("Connection closed after GOAWAY"));

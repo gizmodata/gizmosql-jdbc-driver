@@ -85,7 +85,25 @@ jobs:
             echo "OK: Bytecode correctly uses AbstractByteBuf (no PooledUnsafeDirectByteBuf references)"
           fi
 
+      - name: Generate TLS test keystores
+        run: |
+          CERT_DIR=testing/data/flight
+          KEYS_DIR=flight/flight-sql-jdbc-core/src/test/resources/keys
+          rm -f "${KEYS_DIR}/keyStore.jks" "${KEYS_DIR}/noCertificate.jks"
+          keytool -importcert -noprompt -alias root-ca \
+            -file "${CERT_DIR}/root-ca.pem" \
+            -keystore "${KEYS_DIR}/keyStore.jks" \
+            -storepass flight -storetype JKS
+          keytool -genkeypair -noprompt -alias dummy -dname "CN=dummy" -keyalg RSA \
+            -keystore "${KEYS_DIR}/noCertificate.jks" \
+            -storepass flight1 -storetype JKS
+          keytool -delete -noprompt -alias dummy \
+            -keystore "${KEYS_DIR}/noCertificate.jks" \
+            -storepass flight1
+
       - name: Run Unit Tests
+        env:
+          ARROW_TEST_DATA: ${{ github.workspace }}/testing/data
         run: |
           EXTRA_ARGS=""
           TEST_MODULES="flight/flight-sql-jdbc-core,flight/flight-sql-jdbc-driver"
