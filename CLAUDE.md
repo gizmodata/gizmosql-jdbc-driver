@@ -68,10 +68,10 @@ Fork of Apache Arrow Java, producing a shaded JDBC driver JAR (`com.gizmodata:gi
 Before tagging a new release:
 
 1. **Update `CHANGELOG.md`** — Add entries under a new version heading. Follow [Keep a Changelog](https://keepachangelog.com/) format.
-2. **Update `README.md`** — Update version references in Maven/Gradle snippets and the badge URL.
+2. **Update `README.md`** — Update version references in Maven/Gradle snippets and the badge URL. **Keep version numbers in sync between `README.md` and `CHANGELOG.md`.**
 3. **Run Spotless** — `./mvnw clean spotless:apply -pl flight/flight-sql-jdbc-core` to format all source.
 4. **Commit and push to `main`**.
-5. **Tag with `v<version>`** (e.g., `git tag v1.5.0 && git push origin v1.5.0`).
+5. **Tag with `v<version>`** (e.g., `git tag v1.5.1 && git push origin v1.5.1`).
 6. **After Maven Central publish** — Update `gizmosqlline` pom.xml and README with new driver version.
 
 ## Stale Bytecode History (v1.3.0–v1.4.0)

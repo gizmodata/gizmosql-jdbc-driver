@@ -4,10 +4,17 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.1] - 2026-02-21
+## [1.5.1] - 2026-03-10
 
 ### Fixed
 - Always send `CloseSession` RPC when closing a JDBC connection. Previously, `CloseSession` was only sent if a catalog had been explicitly set, leaving server-side sessions open for most connections.
+- Suppress `UNIMPLEMENTED` and `UNAUTHENTICATED` errors from `CloseSession` during connection close, matching existing handling of `UNAVAILABLE`.
+- Enable TLS unit tests in CI by setting `ARROW_TEST_DATA` and regenerating JKS keystores from the arrow-testing submodule.
+
+### Changed
+- Port upstream [GH-1007](https://github.com/apache/arrow-java/issues/1007): `MemoryUtil` no longer crashes during class loading if `--add-opens` is not set; instead degrades gracefully.
+- Port upstream [GH-130](https://github.com/apache/arrow-java/issues/130): `AutoCloseables` null-safety — prevents `NullPointerException` in resource cleanup paths.
+- Port upstream [GH-1038](https://github.com/apache/arrow-java/issues/1038): Reduce per-instance memory overhead in `ArrowBuf`, `BufferLedger`, and `Accountant` by replacing `AtomicLong`/`AtomicInteger` fields with static field updaters.
 
 ## [1.5.0] - 2026-02-11
 
