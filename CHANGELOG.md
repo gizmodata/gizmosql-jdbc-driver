@@ -4,6 +4,14 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.2] - 2026-04-10
+
+### Fixed
+- **Fail fast with a clear error when credentials are missing or partial.** Previously, building a client with no `user`/`password` (or only one of the two) silently skipped the basic auth handshake, letting `DriverManager.getConnection` return. The first metadata call would then surface the cryptic server-side error `Invalid Authorization Header type!` — seen by users of DBeaver and similar tools when the driver was handed incomplete credentials. `ArrowFlightSqlClientHandler.Builder.build()` now validates credentials up front and throws `SQLException` with actionable messages (e.g. `"No credentials provided. GizmoSQL requires authentication: set 'user' and 'password' connection properties, or 'token', or configure OAuth (authType=external)."`). Token and OAuth paths are unchanged.
+
+### Changed
+- Removed upstream Apache Arrow tests that exercised anonymous/no-auth Flight SQL connections (`ConnectionTest#testGetBasicClientNoAuth*`, `ConnectionTlsTest#testGetNonAuthenticatedEncrypted*`, `ConnectionMutualTlsTest#testGetNonAuthenticatedEncrypted*`, `ConnectionTlsRootCertsTest#testGetNonAuthenticatedEncrypted*`). GizmoSQL requires authentication on every connection, so these scenarios are no longer supported; the new behavior is pinned by `ArrowFlightSqlClientHandlerBuilderTest#testBuildRejects*` (5 regression tests).
+
 ## [1.5.1] - 2026-03-10
 
 ### Fixed
