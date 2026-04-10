@@ -1106,12 +1106,51 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
     }
 
     /**
+     * Validates that callers supplied credentials in one of the supported forms before any network
+     * I/O happens. Rejects empty/whitespace-only usernames, half-filled username/password pairs,
+     * and the anonymous case (no username, no token, no OAuth).
+     */
+    private void validateCredentials() throws SQLException {
+      if (oauthConfig != null) {
+        return;
+      }
+      if (token != null && !token.isEmpty()) {
+        return;
+      }
+      boolean userSet = username != null && !username.trim().isEmpty();
+      boolean passSet = password != null && !password.isEmpty();
+      if (!userSet && !passSet) {
+        throw new SQLException(
+            "No credentials provided. GizmoSQL requires authentication: set 'user' and 'password'"
+                + " connection properties, or 'token', or configure OAuth (authType=external).");
+      }
+      if (!userSet) {
+        throw new SQLException(
+            "Username is required when a password is provided. Set the 'user' connection"
+                + " property.");
+      }
+      if (!passSet) {
+        throw new SQLException(
+            "Password is required when a username is provided. Set the 'password' connection"
+                + " property.");
+      }
+    }
+
+    /**
      * Builds a new {@link ArrowFlightSqlClientHandler} from the provided fields.
      *
      * @return a new client handler.
      * @throws SQLException on error.
      */
     public ArrowFlightSqlClientHandler build() throws SQLException {
+      // Fail fast on missing/partial credentials. GizmoSQL does not allow anonymous
+      // connections, and a malformed or absent Authorization header surfaces as the
+      // cryptic server-side error "Invalid Authorization Header type!" on the first
+      // metadata call — long after DriverManager.getConnection has returned. Raise a
+      // clear SQLException here so the failure happens at connect time with a message
+      // that tells the caller exactly what to fix.
+      validateCredentials();
+
       // Copy middleware so that the build method doesn't change the state of the
       // builder fields
       // itself.

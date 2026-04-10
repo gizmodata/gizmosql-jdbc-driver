@@ -73,21 +73,26 @@ public class ArrowFlightJdbcFactoryTest {
     constructor.setAccessible(true);
     ArrowFlightJdbcFactory factory = constructor.newInstance();
 
+    final int port = FLIGHT_SERVER_TEST_EXTENSION.getPort();
     final Properties properties = new Properties();
     properties.putAll(
         ImmutableMap.of(
             ArrowFlightConnectionProperty.HOST.camelName(),
             "localhost",
             ArrowFlightConnectionProperty.PORT.camelName(),
-            32010,
+            port,
             ArrowFlightConnectionProperty.USE_ENCRYPTION.camelName(),
-            false));
+            false,
+            ArrowFlightConnectionProperty.USER.camelName(),
+            "user1",
+            ArrowFlightConnectionProperty.PASSWORD.camelName(),
+            "pass1"));
 
     try (Connection connection =
         factory.newConnection(
             driver,
             constructor.newInstance(),
-            "jdbc:arrow-flight-sql://localhost:32010",
+            "jdbc:arrow-flight-sql://localhost:" + port,
             properties)) {
       assert connection.isValid(300);
     }

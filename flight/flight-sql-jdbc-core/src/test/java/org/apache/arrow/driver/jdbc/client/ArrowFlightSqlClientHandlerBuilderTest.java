@@ -21,8 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.SQLException;
 import java.util.Optional;
 import org.apache.arrow.driver.jdbc.FlightServerTestExtension;
 import org.apache.arrow.driver.jdbc.utils.CoreMockedSqlProducers;
@@ -174,5 +176,73 @@ public class ArrowFlightSqlClientHandlerBuilderTest {
     rootBuilder.withCatalog(nameWithSpaces);
     assertTrue(rootBuilder.catalog.isPresent());
     assertEquals(nameWithSpaces, rootBuilder.catalog.get());
+  }
+
+  // Regression tests for the "Invalid Authorization Header type!" failure mode.
+  // When build() was reached without full credentials, the client would defer
+  // authentication until the first metadata call, at which point the server
+  // rejected the malformed (or absent) Authorization header with a cryptic
+  // error. These tests pin the pre-flight validation so that
+  // DriverManager.getConnection() fails synchronously with a useful message.
+
+  private static ArrowFlightSqlClientHandler.Builder noAuthBuilder() {
+    return new ArrowFlightSqlClientHandler.Builder()
+        .withHost("localhost")
+        .withPort(31337)
+        .withBufferAllocator(allocator)
+        .withEncryption(false);
+  }
+
+  @Test
+  public void testBuildRejectsAnonymousConnection() {
+    SQLException ex = assertThrows(SQLException.class, () -> noAuthBuilder().build());
+    assertTrue(
+        ex.getMessage().contains("No credentials provided"),
+        "expected 'No credentials provided' but was: " + ex.getMessage());
+    assertFalse(
+        ex.getMessage().contains("Invalid Authorization Header type"),
+        "must not surface the server-side cryptic error");
+  }
+
+  @Test
+  public void testBuildRejectsUsernameWithoutPassword() {
+    SQLException ex =
+        assertThrows(
+            SQLException.class, () -> noAuthBuilder().withUsername("gizmosql_user").build());
+    assertTrue(
+        ex.getMessage().contains("Password is required"),
+        "expected 'Password is required' but was: " + ex.getMessage());
+  }
+
+  @Test
+  public void testBuildRejectsPasswordWithoutUsername() {
+    SQLException ex =
+        assertThrows(
+            SQLException.class, () -> noAuthBuilder().withPassword("gizmosql_password").build());
+    assertTrue(
+        ex.getMessage().contains("Username is required"),
+        "expected 'Username is required' but was: " + ex.getMessage());
+  }
+
+  @Test
+  public void testBuildRejectsEmptyUsername() {
+    SQLException ex =
+        assertThrows(
+            SQLException.class,
+            () -> noAuthBuilder().withUsername("   ").withPassword("gizmosql_password").build());
+    assertTrue(
+        ex.getMessage().contains("Username is required"),
+        "expected 'Username is required' but was: " + ex.getMessage());
+  }
+
+  @Test
+  public void testBuildRejectsEmptyPassword() {
+    SQLException ex =
+        assertThrows(
+            SQLException.class,
+            () -> noAuthBuilder().withUsername("gizmosql_user").withPassword("").build());
+    assertTrue(
+        ex.getMessage().contains("Password is required"),
+        "expected 'Password is required' but was: " + ex.getMessage());
   }
 }

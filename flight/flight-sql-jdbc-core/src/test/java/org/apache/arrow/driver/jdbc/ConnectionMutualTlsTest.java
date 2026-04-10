@@ -174,25 +174,9 @@ public class ConnectionMutualTlsTest {
         });
   }
 
-  /**
-   * Try to instantiate an encrypted FlightClient without credentials.
-   *
-   * @throws Exception on error.
-   */
-  @Test
-  public void testGetNonAuthenticatedEncryptedClientNoAuth() throws Exception {
-    try (ArrowFlightSqlClientHandler client =
-        new ArrowFlightSqlClientHandler.Builder()
-            .withHost(FLIGHT_SERVER_TEST_EXTENSION.getHost())
-            .withTlsRootCertificates(tlsRootCertsPath)
-            .withClientCertificate(clientMTlsCertPath)
-            .withClientKey(clientMTlsKeyPath)
-            .withBufferAllocator(allocator)
-            .withEncryption(true)
-            .build()) {
-      assertNotNull(client);
-    }
-  }
+  // Removed testGetNonAuthenticatedEncryptedClientNoAuth: GizmoSQL requires
+  // authentication on every connection. See
+  // ArrowFlightSqlClientHandlerBuilderTest#testBuildRejectsAnonymousConnection.
 
   /**
    * Check if an encrypted connection can be established successfully when the provided valid
@@ -221,32 +205,9 @@ public class ConnectionMutualTlsTest {
     }
   }
 
-  /**
-   * Check if an encrypted connection can be established successfully when not providing
-   * authentication.
-   *
-   * @throws Exception on error.
-   */
-  @Test
-  public void testGetNonAuthenticatedEncryptedConnection() throws Exception {
-    final Properties properties = new Properties();
-
-    properties.put(
-        ArrowFlightConnectionProperty.HOST.camelName(), FLIGHT_SERVER_TEST_EXTENSION.getHost());
-    properties.put(
-        ArrowFlightConnectionProperty.PORT.camelName(), FLIGHT_SERVER_TEST_EXTENSION.getPort());
-    properties.put(ArrowFlightConnectionProperty.USE_ENCRYPTION.camelName(), true);
-    properties.put(ArrowFlightConnectionProperty.TLS_ROOT_CERTS.camelName(), tlsRootCertsPath);
-    properties.put(
-        ArrowFlightConnectionProperty.CLIENT_CERTIFICATE.camelName(), clientMTlsCertPath);
-    properties.put(ArrowFlightConnectionProperty.CLIENT_KEY.camelName(), clientMTlsKeyPath);
-
-    final ArrowFlightJdbcDataSource dataSource =
-        ArrowFlightJdbcDataSource.createNewDataSource(properties);
-    try (final Connection connection = dataSource.getConnection()) {
-      assertTrue(connection.isValid(300));
-    }
-  }
+  // Removed testGetNonAuthenticatedEncryptedConnection: GizmoSQL requires
+  // authentication on every connection. See
+  // ArrowFlightSqlClientHandlerBuilderTest#testBuildRejectsAnonymousConnection.
 
   /**
    * Check if an encrypted connection can be established successfully when connecting through the

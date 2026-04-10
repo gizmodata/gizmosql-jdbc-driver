@@ -222,43 +222,11 @@ public class ConnectionTest {
         });
   }
 
-  /**
-   * Try to instantiate a basic FlightClient.
-   *
-   * @throws URISyntaxException on error.
-   */
-  @Test
-  public void testGetBasicClientNoAuthShouldOpenConnection() throws Exception {
-
-    try (ArrowFlightSqlClientHandler client =
-        new ArrowFlightSqlClientHandler.Builder()
-            .withHost(FLIGHT_SERVER_TEST_EXTENSION.getHost())
-            .withBufferAllocator(allocator)
-            .withEncryption(false)
-            .build()) {
-      assertNotNull(client);
-    }
-  }
-
-  /**
-   * Checks if an unencrypted connection can be established successfully when not providing
-   * credentials.
-   *
-   * @throws SQLException on error.
-   */
-  @Test
-  public void testUnencryptedConnectionShouldOpenSuccessfullyWithoutAuthentication()
-      throws Exception {
-    final Properties properties = new Properties();
-    properties.put(ArrowFlightConnectionProperty.HOST.camelName(), "localhost");
-    properties.put(
-        ArrowFlightConnectionProperty.PORT.camelName(), FLIGHT_SERVER_TEST_EXTENSION.getPort());
-    properties.put(ArrowFlightConnectionProperty.USE_ENCRYPTION.camelName(), false);
-    try (Connection connection =
-        DriverManager.getConnection("jdbc:arrow-flight-sql://localhost:32010", properties)) {
-      assertTrue(connection.isValid(300));
-    }
-  }
+  // Removed upstream Arrow Flight "no auth" connection tests (testGetBasicClientNoAuth*,
+  // testUnencryptedConnectionShouldOpenSuccessfullyWithoutAuthentication). GizmoSQL
+  // requires authentication on every connection, so these scenarios are no longer
+  // supported and are now rejected by ArrowFlightSqlClientHandler.Builder.build() —
+  // see ArrowFlightSqlClientHandlerBuilderTest#testBuildRejects*.
 
   /**
    * Check if an unencrypted connection throws an exception when provided with invalid credentials.
