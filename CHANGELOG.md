@@ -4,6 +4,11 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.3] - 2026-04-11
+
+### Fixed
+- **Duplicated columns in result set metadata for empty results.** When a query returned zero rows (e.g. `SELECT * FROM empty_table`), `ResultSetMetaData` exposed every column twice. As soon as the table had data, columns appeared correctly; deleting all rows reproduced the bug. Root cause: `ArrowFlightStatement.executeFlightInfoQuery()` called `signature.columns.addAll(...)` on a list that `ArrowFlightMetaImpl.prepareForHandle()` had already populated, doubling the entries. Normally `ArrowFlightJdbcVectorSchemaRootResultSet.populateData()` clears and repopulates the list before the cursor is built — but that path is gated on `currentEndpointData != null`, and `FlightEndpointDataQueue.enqueue()` returns `null` from its future when no batch has `rowCount > 0`. An empty result therefore skipped the clear, leaving the doubled metadata visible to callers. Fix: clear `signature.columns` before adding in `executeFlightInfoQuery()`.
+
 ## [1.5.2] - 2026-04-10
 
 ### Fixed
