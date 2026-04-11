@@ -274,12 +274,20 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Purge cached memory modules
-        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/.develocity
+        run: rm -rf ~/.m2/repository/org/apache/arrow/arrow-memory-netty-buffer-patch ~/.m2/repository/org/apache/arrow/flight-sql-jdbc-core ~/.m2/.develocity
 
       - name: Build memory-netty-buffer-patch from source
         run: |
           ./mvnw -B -ntp \
             -pl memory/memory-netty-buffer-patch \
+            -am \
+            -DskipTests \
+            clean install
+
+      - name: Build flight-sql-jdbc-core from source
+        run: |
+          ./mvnw -B -ntp \
+            -pl flight/flight-sql-jdbc-core \
             -am \
             -DskipTests \
             clean install
@@ -320,6 +328,23 @@ jobs:
             exit 1
           else
             echo "OK: Release JAR bytecode correctly uses AbstractByteBuf"
+          fi
+
+      - name: Verify bytecode fix (ArrowFlightStatement empty-result column dedupe)
+        run: |
+          JAR="$(pwd)/$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-[0-9]*.jar | grep -v sources | grep -v javadoc | grep -v tests | head -1)"
+          echo "Checking JAR: $JAR"
+          mkdir -p /tmp/verify-afs && cd /tmp/verify-afs
+          jar xf "$JAR" org/apache/arrow/driver/jdbc/ArrowFlightStatement.class
+          # The fix adds a List.clear() call inside executeFlightInfoQuery() before the addAll().
+          # If clear is missing, the shaded jar shipped with stale flight-sql-jdbc-core bytecode.
+          DISASM=$(javap -p -c org/apache/arrow/driver/jdbc/ArrowFlightStatement.class)
+          if ! echo "$DISASM" | awk '/executeFlightInfoQuery/,/^$/' | grep -q 'List.clear'; then
+            echo "ERROR: Release JAR has stale ArrowFlightStatement bytecode (missing List.clear in executeFlightInfoQuery)!"
+            echo "$DISASM"
+            exit 1
+          else
+            echo "OK: Release JAR bytecode includes List.clear in executeFlightInfoQuery"
           fi
 
       - name: Deploy to Maven Central

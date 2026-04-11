@@ -96,6 +96,24 @@ public class ResultSetMetadataTest {
   }
 
   /**
+   * Regression test for empty-result column duplication: when a query returns zero rows, columns
+   * must not be duplicated in the metadata. The schema declares two columns, so getColumnCount()
+   * must return 2 (not 4) and the columns must read back without an empty row being available.
+   */
+  @Test
+  public void testEmptyResultDoesNotDuplicateColumns() throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet resultSet =
+            statement.executeQuery(CoreMockedSqlProducers.LEGACY_REGULAR_ALL_EMPTY_SQL_CMD)) {
+      final ResultSetMetaData md = resultSet.getMetaData();
+      assertThat(md.getColumnCount(), equalTo(2));
+      assertThat(md.getColumnName(1), equalTo("ID"));
+      assertThat(md.getColumnName(2), equalTo("Name"));
+      assertThat(resultSet.next(), equalTo(false));
+    }
+  }
+
+  /**
    * Test if {@link ResultSetMetaData#getColumnTypeName(int)} passing an column index that does not
    * exist.
    */

@@ -67,6 +67,7 @@ public final class CoreMockedSqlProducers {
   public static final String LEGACY_METADATA_SQL_CMD = "SELECT * FROM METADATA";
   public static final String LEGACY_CANCELLATION_SQL_CMD = "SELECT * FROM TAKES_FOREVER";
   public static final String LEGACY_REGULAR_WITH_EMPTY_SQL_CMD = "SELECT * FROM TEST_EMPTIES";
+  public static final String LEGACY_REGULAR_ALL_EMPTY_SQL_CMD = "SELECT * FROM TEST_ALL_EMPTY";
 
   public static final String UUID_SQL_CMD = "SELECT * FROM UUID_TABLE";
   public static final String UUID_PREPARED_SELECT_SQL_CMD =
@@ -100,6 +101,7 @@ public final class CoreMockedSqlProducers {
     addLegacyMetadataSqlCmdSupport(producer);
     addLegacyCancellationSqlCmdSupport(producer);
     addQueryWithEmbeddedEmptyRoot(producer);
+    addQueryWithOnlyEmptyRoots(producer);
     addUuidSqlCmdSupport(producer);
     addUuidPreparedSelectSqlCmdSupport(producer);
     addUuidPreparedUpdateSqlCmdSupport(producer);
@@ -233,6 +235,30 @@ public final class CoreMockedSqlProducers {
         };
     resultProducers.add(dataRoot);
     producer.addSelectQuery(LEGACY_REGULAR_WITH_EMPTY_SQL_CMD, querySchema, resultProducers);
+  }
+
+  private static void addQueryWithOnlyEmptyRoots(final MockFlightSqlProducer producer) {
+    final Schema querySchema =
+        new Schema(
+            ImmutableList.of(
+                new Field("ID", new FieldType(true, new ArrowType.Int(64, true), null), null),
+                new Field("Name", new FieldType(true, new ArrowType.Utf8(), null), null)));
+
+    final List<Consumer<ServerStreamListener>> resultProducers = new ArrayList<>();
+    Consumer<ServerStreamListener> emptyOnly =
+        listener -> {
+          try (final BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+              final VectorSchemaRoot root = VectorSchemaRoot.create(querySchema, allocator)) {
+            root.allocateNew();
+            root.setRowCount(0);
+            listener.start(root);
+            listener.putNext();
+          } finally {
+            listener.completed();
+          }
+        };
+    resultProducers.add(emptyOnly);
+    producer.addSelectQuery(LEGACY_REGULAR_ALL_EMPTY_SQL_CMD, querySchema, resultProducers);
   }
 
   private static void addLegacyRegularSqlCmdSupport(final MockFlightSqlProducer producer) {
