@@ -4,6 +4,12 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.5] - 2026-04-11
+
+### Changed
+- **Release infrastructure: unversioned `gizmosql-jdbc-driver.jar` alias on every GitHub Release.** The publish job now also uploads the main shaded jar under a versionless filename, alongside the existing `-VERSION.jar` / `-sources.jar` / `-javadoc.jar` / `-tests.jar` assets. This makes `https://github.com/gizmodata/gizmosql-jdbc-driver/releases/latest/download/gizmosql-jdbc-driver.jar` auto-redirect to the newest release jar — letting the gizmodata-website repo retire its k8s nginx VirtualServer that hand-redirects `downloads.gizmodata.com/gizmosql-jdbc-driver/latest` to a hardcoded Maven Central URL bumped by hand on every release. The unversioned copy is bit-identical to the versioned main jar; canonical artifacts and Maven Central publishing are unchanged. Excluded from build attestation since it is a rename alias of an already-attested artifact.
+- **Release infrastructure: CHANGELOG.md sections now auto-populate GitHub Release notes.** A new "Extract changelog section for this tag" step in the publish-release job parses `CHANGELOG.md` for the entry matching the current tag and passes it to `softprops/action-gh-release` as `body`. With `generate_release_notes: true` still set, the curated notes appear above the auto-generated PR/commit list — no more copying CHANGELOG entries into the GitHub Release page by hand after every tag. This entry is the first one created via that pipeline.
+
 ## [1.5.4] - 2026-04-11
 
 ### Fixed
