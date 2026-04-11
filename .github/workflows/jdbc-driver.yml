@@ -364,8 +364,20 @@ jobs:
         with:
           subject-path: flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
 
+      - name: Create unversioned jar alias for releases/latest/download
+        run: |
+          # Bit-identical copy of the main shaded jar under a versionless name, so that
+          # https://github.com/gizmodata/gizmosql-jdbc-driver/releases/latest/download/gizmosql-jdbc-driver.jar
+          # auto-redirects to the newest release. Excluded from attestation since it is
+          # just a rename alias of an already-attested artifact.
+          JAR=$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-[0-9]*.jar | grep -v sources | grep -v javadoc | grep -v tests | head -1)
+          echo "Aliasing $JAR -> gizmosql-jdbc-driver.jar"
+          cp "$JAR" flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver.jar
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
+          files: |
+            flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
+            flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver.jar
           generate_release_notes: true
