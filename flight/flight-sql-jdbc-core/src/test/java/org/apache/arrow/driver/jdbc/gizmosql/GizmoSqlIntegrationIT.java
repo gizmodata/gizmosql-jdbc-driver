@@ -517,4 +517,171 @@ public class GizmoSqlIntegrationIT {
       assertNotNull(arr, "String array should not be null");
     }
   }
+
+  /**
+   * Regression test for the DECIMAL prepared-statement parameter crash (v1.6.0). Prior to the fix,
+   * binding a BigDecimal to a DECIMAL column caused the server to SIGABRT (Arrow
+   * ValidateDecimalPrecision check failure) or return a Decimal64 schema that the Java Arrow JDBC
+   * client rejected. Verifies round-trip through INSERT + SELECT.
+   */
+  @Test
+  @Order(200)
+  void testDecimalParameterRoundTrip() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_dec");
+      s.execute("CREATE TABLE it_dec(id INT, amount DECIMAL(10,2))");
+
+      try (PreparedStatement ps = conn.prepareStatement("INSERT INTO it_dec VALUES (?, ?)")) {
+        ps.setInt(1, 1);
+        ps.setBigDecimal(2, new java.math.BigDecimal("123.45"));
+        assertEquals(1, ps.executeUpdate(), "single-row INSERT should report 1 updated row");
+      }
+
+      try (ResultSet rs = s.executeQuery("SELECT amount FROM it_dec WHERE id = 1")) {
+        assertTrue(rs.next(), "inserted row should be present");
+        assertEquals(
+            new java.math.BigDecimal("123.45"),
+            rs.getBigDecimal(1),
+            "decimal value should round-trip exactly");
+      }
+
+      s.execute("DROP TABLE it_dec");
+    }
+  }
+
+  /**
+   * Verifies that {@link DatabaseMetaData#getIndexInfo(String, String, String, boolean, boolean)}
+   * returns rows with the JDBC-contracted column names, correct ordinal positions for multi-column
+   * indexes, and honors the {@code unique} filter. Powered by the server's {@code
+   * _gizmosql_system.main.gizmosql_index_info} catalog view (v1.6.0+), with an inline fallback
+   * against {@code duckdb_indexes()} on older servers.
+   */
+  @Test
+  @Order(201)
+  void testGetIndexInfo() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_ix CASCADE");
+      s.execute("CREATE TABLE it_ix(a INT, b INT, c VARCHAR)");
+      s.execute("CREATE INDEX it_ix_ab ON it_ix(a, b)");
+      s.execute("CREATE UNIQUE INDEX it_ix_c ON it_ix(c)");
+
+      DatabaseMetaData md = conn.getMetaData();
+
+      // Unique-only filter should return exactly one row (the c index).
+      try (ResultSet rs = md.getIndexInfo(null, null, "it_ix", true, false)) {
+        int rows = 0;
+        while (rs.next()) {
+          rows++;
+          assertEquals("it_ix_c", rs.getString("INDEX_NAME"));
+          assertEquals("c", rs.getString("COLUMN_NAME"));
+          assertFalse(rs.getBoolean("NON_UNIQUE"), "unique index should have NON_UNIQUE=false");
+          assertEquals(1, rs.getShort("ORDINAL_POSITION"));
+        }
+        assertEquals(1, rows, "unique filter should return one row");
+      }
+
+      // Non-unique (all indexes) — two rows for the compound (a,b) index plus one for c.
+      try (ResultSet rs = md.getIndexInfo(null, null, "it_ix", false, false)) {
+        int ixAbRows = 0;
+        int ixCRows = 0;
+        while (rs.next()) {
+          String name = rs.getString("INDEX_NAME");
+          short ord = rs.getShort("ORDINAL_POSITION");
+          String col = rs.getString("COLUMN_NAME");
+          if ("it_ix_ab".equals(name)) {
+            ixAbRows++;
+            // Expect a at ord 1, b at ord 2.
+            assertEquals(ord == 1 ? "a" : "b", col, "ordinal-position column mapping");
+            assertTrue(rs.getBoolean("NON_UNIQUE"));
+          } else if ("it_ix_c".equals(name)) {
+            ixCRows++;
+            assertEquals("c", col);
+            assertFalse(rs.getBoolean("NON_UNIQUE"));
+          }
+        }
+        assertEquals(2, ixAbRows, "compound index should yield two rows");
+        assertEquals(1, ixCRows, "single-column index should yield one row");
+      }
+
+      s.execute("DROP TABLE it_ix CASCADE");
+    }
+  }
+
+  /**
+   * Verifies the non-standard {@code ArrowFlightConnection.getViewDefinition(...)} method returns
+   * CREATE VIEW DDL text for an existing view and {@code null} for a missing one. Unwrap via the
+   * JDBC {@link Connection#unwrap(Class)} contract.
+   */
+  @Test
+  @Order(202)
+  void testGetViewDefinition() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_vw_t CASCADE");
+      s.execute("CREATE TABLE it_vw_t(x INT)");
+      s.execute("CREATE OR REPLACE VIEW it_vw_v AS SELECT x + 1 AS x1 FROM it_vw_t");
+
+      org.apache.arrow.driver.jdbc.ArrowFlightConnection afc =
+          conn.unwrap(org.apache.arrow.driver.jdbc.ArrowFlightConnection.class);
+
+      String ddl = afc.getViewDefinition(null, null, "it_vw_v");
+      assertNotNull(ddl, "existing view should return DDL");
+      assertTrue(
+          ddl.toUpperCase(java.util.Locale.ROOT).contains("CREATE"),
+          "DDL should start with CREATE");
+      assertTrue(ddl.contains("it_vw_v"), "DDL should contain the view name");
+
+      String missing = afc.getViewDefinition(null, null, "it_vw_nonexistent");
+      // null is the contract for "view not found".
+      // (We intentionally don't assert !=null here — only exact equality with null.)
+      assertEquals(null, missing, "missing view should return null");
+
+      s.execute("DROP VIEW it_vw_v");
+      s.execute("DROP TABLE it_vw_t");
+    }
+  }
+
+  /**
+   * Verifies that DML statements routed via {@code Statement.execute(...)} produce a valid {@code
+   * getUpdateCount()}. Prior to v1.6.0 the Flight SQL JDBC driver treated DML as a query (because
+   * the server reported a non-empty result-set schema) and left update count at {@code -1} — hiding
+   * the statistics tab in downstream tools like DBeaver.
+   */
+  @Test
+  @Order(203)
+  void testDmlUpdateCount() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_upd");
+      s.execute("CREATE TABLE it_upd(id INT, v VARCHAR)");
+
+      boolean hasRsInsert = s.execute("INSERT INTO it_upd VALUES (1,'a'),(2,'b'),(3,'c')");
+      assertFalse(hasRsInsert, "INSERT should not report a result set");
+      assertEquals(3, s.getUpdateCount(), "INSERT affected row count");
+
+      boolean hasRsUpdate = s.execute("UPDATE it_upd SET v = 'x' WHERE id < 3");
+      assertFalse(hasRsUpdate, "UPDATE should not report a result set");
+      assertEquals(2, s.getUpdateCount(), "UPDATE affected row count");
+
+      boolean hasRsDelete = s.execute("DELETE FROM it_upd WHERE id = 1");
+      assertFalse(hasRsDelete, "DELETE should not report a result set");
+      assertEquals(1, s.getUpdateCount(), "DELETE affected row count");
+
+      // Queries must still go through the query path.
+      boolean hasRsSelect = s.execute("SELECT count(*) FROM it_upd");
+      assertTrue(hasRsSelect, "SELECT should report a result set");
+
+      s.execute("DROP TABLE it_upd");
+    }
+  }
 }

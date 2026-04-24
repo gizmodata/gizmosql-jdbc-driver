@@ -19,7 +19,10 @@ package org.apache.arrow.driver.jdbc;
 import static org.apache.arrow.driver.jdbc.utils.ArrowFlightConnectionConfigImpl.ArrowFlightConnectionProperty.replaceSemiColons;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -163,6 +166,84 @@ public final class ArrowFlightConnection extends AvaticaConnection {
    */
   ArrowFlightSqlClientHandler getClientHandler() {
     return clientHandler;
+  }
+
+  /**
+   * Returns the CREATE VIEW DDL for the given view.
+   *
+   * <p>JDBC has no standard API for fetching view source, so this is a GizmoSQL-specific extension
+   * reachable via {@link Connection#unwrap(Class)}. Preferred path is the server's {@code
+   * _gizmosql_system.main.gizmosql_view_definition} catalog view (DuckDB backend, recent server
+   * versions); on older servers where that catalog isn't registered we fall back to an inline query
+   * against {@code duckdb_views()} — the same source the catalog view wraps.
+   *
+   * @param catalog exact-match catalog, or {@code null} to not filter
+   * @param schema exact-match schema, or {@code null} to not filter
+   * @param view required, exact-match view name
+   * @return the DDL text, or {@code null} if the view is not found
+   * @throws SQLException if neither the catalog view nor {@code duckdb_views()} is available —
+   *     typically means the server is running the SQLite backend, which doesn't expose view DDL
+   *     through this API
+   */
+  public String getViewDefinition(final String catalog, final String schema, final String view)
+      throws SQLException {
+    if (view == null) {
+      return null;
+    }
+    // Preferred path: the catalog view (columns are JDBC-shaped).
+    final String viewSql =
+        "SELECT \"VIEW_DEFINITION\" FROM _gizmosql_system.main.gizmosql_view_definition"
+            + " WHERE \"TABLE_NAME\" = '"
+            + escapeSqlLiteral(view)
+            + '\''
+            + (catalog == null ? "" : " AND \"TABLE_CAT\" = '" + escapeSqlLiteral(catalog) + '\'')
+            + (schema == null ? "" : " AND \"TABLE_SCHEM\" = '" + escapeSqlLiteral(schema) + '\'')
+            + " LIMIT 1";
+    try (Statement stmt = createStatement();
+        ResultSet rs = stmt.executeQuery(viewSql)) {
+      return rs.next() ? rs.getString(1) : null;
+    } catch (SQLException first) {
+      if (!looksLikeMissingSystemCatalog(first)) {
+        throw first;
+      }
+      // Fall through: server predates the _gizmosql_system catalog. Emulate the view inline.
+    }
+
+    // Fallback: query duckdb_views() directly (raw column names). This mirrors the catalog
+    // view definition created at server startup — keep the two in sync if either changes.
+    final String inlineSql =
+        "SELECT sql FROM duckdb_views() WHERE view_name = '"
+            + escapeSqlLiteral(view)
+            + '\''
+            + (catalog == null ? "" : " AND database_name = '" + escapeSqlLiteral(catalog) + '\'')
+            + (schema == null ? "" : " AND schema_name = '" + escapeSqlLiteral(schema) + '\'')
+            + " LIMIT 1";
+    try (Statement stmt = createStatement();
+        ResultSet rs = stmt.executeQuery(inlineSql)) {
+      return rs.next() ? rs.getString(1) : null;
+    } catch (SQLException second) {
+      final String msg = second.getMessage() == null ? "" : second.getMessage();
+      if (msg.contains("duckdb_views") || msg.contains("Catalog Error")) {
+        throw new SQLException(
+            "getViewDefinition() is not supported on this GizmoSQL server: the DuckDB catalog"
+                + " function duckdb_views() is unavailable, which typically means the server"
+                + " is running the SQLite backend. Only the DuckDB backend currently exposes"
+                + " view DDL through this API.",
+            second);
+      }
+      throw second;
+    }
+  }
+
+  private static boolean looksLikeMissingSystemCatalog(final Throwable t) {
+    final String msg = t.getMessage() == null ? "" : t.getMessage();
+    return msg.contains("_gizmosql_system")
+        || msg.contains("gizmosql_view_definition")
+        || msg.contains("Catalog Error");
+  }
+
+  private static String escapeSqlLiteral(final String value) {
+    return value.replace("'", "''");
   }
 
   /**

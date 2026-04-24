@@ -269,6 +269,17 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
     return sqlClient.execute(query, getOptions());
   }
 
+  /**
+   * Executes a non-prepared DML statement via the Flight SQL {@code DoPutCommandStatementUpdate}
+   * RPC and returns the number of affected rows.
+   *
+   * @param query the SQL statement.
+   * @return the count of affected rows as reported by the server.
+   */
+  public long executeUpdate(final String query) {
+    return sqlClient.executeUpdate(query, getOptions());
+  }
+
   @Override
   public void close() throws SQLException {
     try {

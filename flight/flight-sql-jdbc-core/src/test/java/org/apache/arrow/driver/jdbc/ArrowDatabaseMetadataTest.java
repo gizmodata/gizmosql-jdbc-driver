@@ -34,6 +34,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -1208,31 +1209,20 @@ public class ArrowDatabaseMetadataTest {
     }
   }
 
+  /**
+   * The GizmoSQL driver overrides {@code getIndexInfo} to query the server's {@code
+   * _gizmosql_system.main.gizmosql_index_info} catalog view (or, as a fallback, {@code
+   * duckdb_indexes()} directly). Against a non-GizmoSQL Flight SQL server (like the in-process mock
+   * used here), both queries fail, and we propagate the failure as a {@link SQLException} rather
+   * than silently returning an empty result set. For the happy-path coverage — indexes discovered
+   * against a real GizmoSQL server — see {@code
+   * org.apache.arrow.driver.jdbc.gizmosql.GizmoSqlIntegrationIT#testGetIndexInfo}.
+   */
   @Test
-  public void testGetIndexInfo() throws SQLException {
-    try (ResultSet resultSet =
-        connection.getMetaData().getIndexInfo(null, null, null, false, true)) {
-      // Maps ordinal index to column name according to JDBC documentation
-      final Map<Integer, String> expectedGetIndexInfoSchema =
-          new HashMap<Integer, String>() {
-            {
-              put(1, "TABLE_CAT");
-              put(2, "TABLE_SCHEM");
-              put(3, "TABLE_NAME");
-              put(4, "NON_UNIQUE");
-              put(5, "INDEX_QUALIFIER");
-              put(6, "INDEX_NAME");
-              put(7, "TYPE");
-              put(8, "ORDINAL_POSITION");
-              put(9, "COLUMN_NAME");
-              put(10, "ASC_OR_DESC");
-              put(11, "CARDINALITY");
-              put(12, "PAGES");
-              put(13, "FILTER_CONDITION");
-            }
-          };
-      testEmptyResultSet(resultSet, expectedGetIndexInfoSchema);
-    }
+  public void testGetIndexInfoAgainstNonGizmosqlServerThrows() {
+    assertThrows(
+        SQLException.class,
+        () -> connection.getMetaData().getIndexInfo(null, null, null, false, true));
   }
 
   @Test

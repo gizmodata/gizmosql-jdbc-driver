@@ -211,6 +211,25 @@ public class ArrowFlightMetaImpl extends MetaImpl {
       final PrepareCallback callback)
       throws NoSuchStatementException {
     try {
+      // Fast-path for non-query statements (INSERT/UPDATE/DELETE/DDL):
+      // route through DoPutCommandStatementUpdate so we get an accurate update count
+      // back from the server. The default prepared-statement path reports a non-empty
+      // result-set schema for DML (GizmoSQL's DuckDB backend returns a Count column),
+      // which makes Avatica treat the statement as a SELECT and leaves getUpdateCount()
+      // at -1 — hiding execution statistics in downstream tools like DBeaver.
+      if (isNonQueryStatement(query)) {
+        final long updateCount =
+            ((ArrowFlightConnection) connection).getClientHandler().executeUpdate(query);
+        synchronized (callback.getMonitor()) {
+          callback.clear();
+          callback.assign(handle.signature, null, updateCount);
+        }
+        callback.execute();
+        final MetaResultSet metaResultSet =
+            MetaResultSet.count(handle.connectionId, handle.id, updateCount);
+        return new ExecuteResult(Collections.singletonList(metaResultSet));
+      }
+
       PreparedStatement preparedStatement = prepareForHandle(query, handle);
       final StatementType statementType = preparedStatement.getType();
 
@@ -231,6 +250,107 @@ public class ArrowFlightMetaImpl extends MetaImpl {
       throw new RuntimeException(e);
     } catch (SQLException e) {
       throw new NoSuchStatementException(handle);
+    }
+  }
+
+  /**
+   * Returns {@code true} if the given SQL is a non-query statement (INSERT/UPDATE/DELETE/MERGE or
+   * DDL) that should be routed through {@code DoPutCommandStatementUpdate}. The check looks at the
+   * leading SQL keyword after skipping leading whitespace and {@code --} / block comments.
+   *
+   * <p>A false positive would only mean we route a query through the update path and the server
+   * rejects it; a false negative leaves the current (SELECT-like) behavior. SELECT, WITH, VALUES,
+   * SHOW, PRAGMA, EXPLAIN, DESCRIBE are query-shaped and deliberately not treated as updates.
+   *
+   * <p>TODO: replace this heuristic once the Flight SQL spec adds an authoritative {@code
+   * is_update} field on {@code ActionCreatePreparedStatementResult}. Tracking:
+   *
+   * <ul>
+   *   <li>Spec PR: https://github.com/apache/arrow/pull/49498 (GH-49497)
+   *   <li>Java impl PR: https://github.com/apache/arrow-java/pull/1064
+   * </ul>
+   *
+   * Once upstream merges, have {@link #prepareAndExecute} check {@code
+   * preparedStatementResult.hasIsUpdate() ? preparedStatementResult.getIsUpdate() :
+   * isNonQueryStatement(query)} so we trust the server when it tells us, and fall back to this
+   * keyword sniff only for older servers that don't populate the field. Known edge cases this
+   * heuristic misses that the protocol field would fix: CTE-wrapped DML like {@code WITH t AS
+   * (INSERT ... RETURNING *) SELECT ...} which starts with {@code WITH} but actually modifies data.
+   */
+  static boolean isNonQueryStatement(final String sql) {
+    if (sql == null) {
+      return false;
+    }
+    final int n = sql.length();
+    int i = 0;
+    while (i < n) {
+      final char c = sql.charAt(i);
+      if (Character.isWhitespace(c)) {
+        i++;
+      } else if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
+        // line comment
+        i += 2;
+        while (i < n && sql.charAt(i) != '\n') {
+          i++;
+        }
+      } else if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+        // block comment
+        i += 2;
+        while (i + 1 < n && !(sql.charAt(i) == '*' && sql.charAt(i + 1) == '/')) {
+          i++;
+        }
+        i += 2;
+      } else {
+        break;
+      }
+    }
+    if (i >= n) {
+      return false;
+    }
+    int end = i;
+    while (end < n && (Character.isLetterOrDigit(sql.charAt(end)) || sql.charAt(end) == '_')) {
+      end++;
+    }
+    final String keyword = sql.substring(i, end).toUpperCase();
+    // Kept deliberately in sync with the ADBC Python driver's _DDL_DML_KEYWORDS
+    // (src/adbc_driver_gizmosql/dbapi.py) so the JDBC and ADBC drivers classify
+    // statements the same way. If you add or remove a keyword here, mirror the
+    // change in the ADBC driver repo (gizmodata/adbc-driver-gizmosql).
+    switch (keyword) {
+      case "ALTER":
+      case "ANALYZE":
+      case "ATTACH":
+      case "BEGIN":
+      case "CALL":
+      case "CHECKPOINT":
+      case "COMMENT":
+      case "COMMIT":
+      case "COPY":
+      case "CREATE":
+      case "DELETE":
+      case "DETACH":
+      case "DROP":
+      case "EXPORT":
+      case "GRANT":
+      case "IMPORT":
+      case "INSERT":
+      case "INSTALL":
+      case "LOAD":
+      case "MERGE":
+      case "RENAME":
+      case "REPLACE":
+      case "RESET":
+      case "REVOKE":
+      case "ROLLBACK":
+      case "SET":
+      case "TRUNCATE":
+      case "UPDATE":
+      case "UPSERT":
+      case "USE":
+      case "VACUUM":
+        return true;
+      default:
+        return false;
     }
   }
 

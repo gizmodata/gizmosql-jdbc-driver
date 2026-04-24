@@ -970,6 +970,123 @@ public class ArrowDatabaseMetadata extends AvaticaDatabaseMetaData {
         connection, flightInfoPrimaryKeys, transformer);
   }
 
+  /**
+   * Flight SQL has no dedicated GetIndexInfo command, so stock Flight SQL JDBC returns an empty
+   * result set here. GizmoSQL (DuckDB backend) exposes index metadata via a catalog view {@code
+   * _gizmosql_system.main.gizmosql_index_info} on recent server versions. Older servers don't have
+   * that view, so we fall back to the same query inlined against {@code duckdb_indexes()} — keeping
+   * the feature working across server versions.
+   *
+   * <p>If the inline fallback also fails with a Catalog Error, the server is almost certainly the
+   * SQLite backend (which doesn't expose {@code duckdb_indexes()}); we throw a clear {@link
+   * SQLException} in that case. SQLite backend is a small minority of GizmoSQL deployments — if it
+   * becomes important we can add an analogous {@code PRAGMA index_list} / {@code
+   * sqlite_master}-based fallback.
+   */
+  @Override
+  public ResultSet getIndexInfo(
+      final String catalog,
+      final String schema,
+      final String table,
+      final boolean unique,
+      final boolean approximate)
+      throws SQLException {
+    final ArrowFlightConnection connection = getConnection();
+    final String filter = buildIndexInfoFilter(catalog, schema, table, unique);
+    final String orderBy =
+        " ORDER BY \"NON_UNIQUE\", \"TYPE\", \"INDEX_NAME\", \"ORDINAL_POSITION\"";
+
+    // Preferred path: the server's pre-built catalog view.
+    final String viewSql =
+        "SELECT \"TABLE_CAT\", \"TABLE_SCHEM\", \"TABLE_NAME\", \"NON_UNIQUE\","
+            + " \"INDEX_QUALIFIER\", \"INDEX_NAME\", \"TYPE\", \"ORDINAL_POSITION\","
+            + " \"COLUMN_NAME\", \"ASC_OR_DESC\", \"CARDINALITY\", \"PAGES\","
+            + " \"FILTER_CONDITION\""
+            + " FROM _gizmosql_system.main.gizmosql_index_info WHERE 1=1"
+            + filter
+            + orderBy;
+    try {
+      final FlightInfo flightInfo = connection.getClientHandler().getInfo(viewSql);
+      return ArrowFlightJdbcFlightStreamResultSet.fromFlightInfo(connection, flightInfo, null);
+    } catch (Exception first) {
+      if (!looksLikeMissingSystemCatalog(first)) {
+        throw (first instanceof SQLException) ? (SQLException) first : new SQLException(first);
+      }
+      // Fall through: server predates the _gizmosql_system catalog. Emulate the view inline
+      // against duckdb_indexes(). This matches the view definition created at server startup
+      // in the current GizmoSQL release — keep the two in sync.
+    }
+
+    final String inlineSql =
+        "WITH parsed AS ("
+            + "  SELECT di.database_name, di.schema_name, di.table_name,"
+            + "         di.is_unique, di.index_name,"
+            + "         str_split(trim(BOTH '[]' FROM di.expressions), ', ') AS cols"
+            + "  FROM duckdb_indexes() di"
+            + ") "
+            + "SELECT database_name           AS \"TABLE_CAT\","
+            + "       schema_name             AS \"TABLE_SCHEM\","
+            + "       table_name              AS \"TABLE_NAME\","
+            + "       NOT is_unique           AS \"NON_UNIQUE\","
+            + "       CAST(NULL AS VARCHAR)   AS \"INDEX_QUALIFIER\","
+            + "       index_name              AS \"INDEX_NAME\","
+            + "       CAST(3 AS SMALLINT)     AS \"TYPE\","
+            + "       idx::SMALLINT           AS \"ORDINAL_POSITION\","
+            + "       cols[idx]               AS \"COLUMN_NAME\","
+            + "       CAST('A' AS VARCHAR)    AS \"ASC_OR_DESC\","
+            + "       CAST(NULL AS BIGINT)    AS \"CARDINALITY\","
+            + "       CAST(NULL AS BIGINT)    AS \"PAGES\","
+            + "       CAST(NULL AS VARCHAR)   AS \"FILTER_CONDITION\" "
+            + "FROM parsed, generate_series(1, len(cols)) AS t(idx) "
+            + "WHERE 1=1"
+            + filter
+            + orderBy;
+    try {
+      final FlightInfo flightInfo = connection.getClientHandler().getInfo(inlineSql);
+      return ArrowFlightJdbcFlightStreamResultSet.fromFlightInfo(connection, flightInfo, null);
+    } catch (Exception second) {
+      final String msg = second.getMessage() == null ? "" : second.getMessage();
+      if (msg.contains("duckdb_indexes") || msg.contains("Catalog Error")) {
+        throw new SQLException(
+            "getIndexInfo() is not supported on this GizmoSQL server: the DuckDB catalog"
+                + " function duckdb_indexes() is unavailable, which typically means the server"
+                + " is running the SQLite backend. Only the DuckDB backend currently exposes"
+                + " index metadata through this API.",
+            second);
+      }
+      throw (second instanceof SQLException) ? (SQLException) second : new SQLException(second);
+    }
+  }
+
+  private static String buildIndexInfoFilter(
+      final String catalog, final String schema, final String table, final boolean unique) {
+    final StringBuilder f = new StringBuilder();
+    if (catalog != null) {
+      f.append(" AND \"TABLE_CAT\" = '").append(escapeSqlLiteral(catalog)).append('\'');
+    }
+    if (schema != null) {
+      f.append(" AND \"TABLE_SCHEM\" = '").append(escapeSqlLiteral(schema)).append('\'');
+    }
+    if (table != null) {
+      f.append(" AND \"TABLE_NAME\" = '").append(escapeSqlLiteral(table)).append('\'');
+    }
+    if (unique) {
+      f.append(" AND \"NON_UNIQUE\" = false");
+    }
+    return f.toString();
+  }
+
+  private static boolean looksLikeMissingSystemCatalog(final Throwable t) {
+    final String msg = t.getMessage() == null ? "" : t.getMessage();
+    return msg.contains("_gizmosql_system")
+        || msg.contains("gizmosql_index_info")
+        || msg.contains("Catalog Error");
+  }
+
+  private static String escapeSqlLiteral(final String value) {
+    return value.replace("'", "''");
+  }
+
   @Override
   public ResultSet getColumns(
       final String catalog,

@@ -4,6 +4,18 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0] - 2026-04-24
+
+### Added
+- **`DatabaseMetaData.getIndexInfo()` now returns actual index metadata (DuckDB backend).** Flight SQL has no `GetIndexInfo` RPC, so upstream Arrow Flight SQL JDBC returns an empty result set. The GizmoSQL driver now queries the server's `_gizmosql_system.main.gizmosql_index_info` catalog view (introduced in GizmoSQL server v1.22.0) to return JDBC-contracted rows: `TABLE_CAT`, `TABLE_SCHEM`, `TABLE_NAME`, `NON_UNIQUE`, `INDEX_QUALIFIER`, `INDEX_NAME`, `TYPE`, `ORDINAL_POSITION`, `COLUMN_NAME`, `ASC_OR_DESC`, `CARDINALITY`, `PAGES`, `FILTER_CONDITION`. Backward compatible with older GizmoSQL servers: if the catalog view doesn't exist, falls back to an inline query against `duckdb_indexes()` that emulates the same schema. If neither is available (SQLite backend), raises a clear `SQLException` with an upgrade/backend hint rather than silently returning empty. Unlocks index visibility in downstream clients like DBeaver.
+- **New `ArrowFlightConnection.getViewDefinition(catalog, schema, view)` method** returns CREATE VIEW DDL text for a named view. JDBC has no standard API for view source, so this is a non-standard extension reachable via `Connection.unwrap(ArrowFlightConnection.class).getViewDefinition(...)`. Backed by the server's `_gizmosql_system.main.gizmosql_view_definition` catalog view, with an inline `duckdb_views()` fallback for older servers and a clear "SQLite backend not supported" error when neither is available. Returns `null` when the view is not found.
+- **Statement-level DML now reports accurate `getUpdateCount()`** for INSERT / UPDATE / DELETE / MERGE / DDL executed through `Statement.execute(sql)`. Previously the Flight SQL JDBC driver treated every statement as a query-producing prepared statement; DuckDB reports a `Count`-shaped result schema for DML, so `StatementType` resolved to `SELECT`, `getUpdateCount()` stayed at `-1`, and tools like DBeaver couldn't surface execution statistics. `ArrowFlightMetaImpl.prepareAndExecute(...)` now sniffs the leading keyword (with SQL comment stripping, case insensitive, Locale-safe) and routes DML through `DoPutCommandStatementUpdate`, returning a valid update count. Keyword set is deliberately kept in sync with the ADBC Python driver's `_DDL_DML_KEYWORDS` so both drivers classify statements the same way. A TODO in source code points at the upstream Apache Arrow proposal [arrow#49498](https://github.com/apache/arrow/pull/49498) to replace this heuristic with an authoritative `is_update` protocol field — one known false negative of the current heuristic is CTE-wrapped DML like `WITH ... INSERT ... RETURNING *`.
+
+### Testing
+- New integration tests in `GizmoSqlIntegrationIT` exercise each of the additions above against a live GizmoSQL server: `testDecimalParameterRoundTrip` (regression for the server-side v1.22.0 DECIMAL fix), `testGetIndexInfo`, `testGetViewDefinition`, `testDmlUpdateCount`.
+- New unit tests in `ArrowFlightMetaImplTest` pin the `isNonQueryStatement` keyword-classification heuristic (DDL, DML, query-shaped keywords, line/block comments, case insensitivity, dbt-style comment prefixes, CTE-wrapped-DML known miss).
+- Upstream test `ArrowDatabaseMetadataTest#testGetIndexInfo` (which asserted stock empty-result behavior) was renamed to `testGetIndexInfoAgainstNonGizmosqlServerThrows` and updated to match the new contract — driver now throws `SQLException` on non-GizmoSQL Flight SQL servers rather than returning an empty result set.
+
 ## [1.5.5] - 2026-04-11
 
 ### Changed
