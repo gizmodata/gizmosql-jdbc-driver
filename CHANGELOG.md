@@ -4,6 +4,19 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.1] - 2026-04-24
+
+### Fixed
+- **DECIMAL parameter binding no longer rejects non-`BigDecimal` values.** When DBeaver's Data Editor (and other Avatica-backed tools) passes an un-typed numeric literal like `3` for a DECIMAL column, Avatica presents it as a Double/Integer/Long. The previous `DecimalAvaticaParameterConverter` did a naked cast `(BigDecimal) typedValue.toLocal()` and threw `ClassCastException`, surfacing as "Binding value of type DOUBLE is not yet supported for expected Arrow type Decimal(p, s, 128)". The converter now coerces `Double` / `Integer` / `Long` / `String` to `BigDecimal` via `toString()` (avoiding the well-known `new BigDecimal(double)` precision pitfall), rescales to the column's declared scale (lossless widen, HALF_UP rounding on truncation — matches the behavior every other JDBC driver gives), and binds cleanly.
+
+### Added
+- **`DatabaseMetaData.getColumns()` now populates `COLUMN_DEF`.** GizmoSQL server v1.22.1 publishes the column default expression in a vendor-prefixed Arrow Field metadata key (`GIZMOSQL:COLUMN_DEFAULT`) — there is no upstream Apache Arrow Flight SQL spec key for COLUMN_DEF. `ArrowDatabaseMetadata.getColumns()` now reads that key and fills the JDBC `COLUMN_DEF` column when present, so DBeaver (and other JDBC clients) can display "Default" values in their column browser and Data Editor. The server's existing `ARROW:FLIGHT:SQL:REMARKS` and `ARROW:FLIGHT:SQL:IS_AUTO_INCREMENT` metadata keys are already read by the stock Arrow Flight SQL JDBC driver — they produce correct `REMARKS` and `IS_AUTOINCREMENT` values once the server fills them (also shipping in v1.22.1).
+
+### Testing
+- New integration tests in `GizmoSqlIntegrationIT`:
+  - `testGetColumnsEnrichment` — verifies `NULLABLE`, `REMARKS`, `IS_AUTOINCREMENT`, and `COLUMN_DEF` are all populated correctly for a table with NOT NULL, column comments, a `nextval(...)` default, and a literal default.
+  - `testDecimalBindWithNonBigDecimalInput` — pins the DECIMAL coercion path (`setDouble`, `setObject(String)`, `setBigDecimal` with extra scale), including the HALF_UP rounding expectation.
+
 ## [1.6.0] - 2026-04-24
 
 ### Added

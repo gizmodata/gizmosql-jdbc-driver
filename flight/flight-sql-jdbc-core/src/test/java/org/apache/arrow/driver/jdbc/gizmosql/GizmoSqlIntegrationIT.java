@@ -684,4 +684,123 @@ public class GizmoSqlIntegrationIT {
       s.execute("DROP TABLE it_upd");
     }
   }
+
+  /**
+   * Verifies that {@code DatabaseMetaData.getColumns()} surfaces per-column metadata the server now
+   * packs into the Arrow Field metadata map (GizmoSQL v1.22.1): real NOT NULL, column comments
+   * (REMARKS), auto-increment detection from a {@code nextval(...)} default (IS_AUTOINCREMENT), and
+   * the default expression (COLUMN_DEF). Prior to v1.22.1 the server derived the table schema from
+   * {@code SELECT * FROM t LIMIT 0}, which marks every field nullable and carries none of this
+   * information.
+   */
+  @Test
+  @Order(204)
+  void testGetColumnsEnrichment() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_meta CASCADE");
+      s.execute("DROP SEQUENCE IF EXISTS it_meta_seq");
+      s.execute("CREATE SEQUENCE it_meta_seq START 1");
+      s.execute(
+          "CREATE TABLE it_meta("
+              + "  id INT PRIMARY KEY DEFAULT nextval('it_meta_seq'),"
+              + "  name VARCHAR NOT NULL,"
+              + "  salary DECIMAL(10,2) DEFAULT 50000.00,"
+              + "  note VARCHAR"
+              + ")");
+      s.execute("COMMENT ON COLUMN it_meta.name IS 'employee name'");
+
+      DatabaseMetaData md = conn.getMetaData();
+      java.util.Map<String, java.util.Map<String, String>> rows = new java.util.HashMap<>();
+      try (ResultSet rs = md.getColumns(null, null, "it_meta", null)) {
+        while (rs.next()) {
+          java.util.Map<String, String> cols = new java.util.HashMap<>();
+          cols.put("IS_NULLABLE", rs.getString("IS_NULLABLE"));
+          cols.put("COLUMN_DEF", rs.getString("COLUMN_DEF"));
+          cols.put("IS_AUTOINCREMENT", rs.getString("IS_AUTOINCREMENT"));
+          cols.put("REMARKS", rs.getString("REMARKS"));
+          rows.put(rs.getString("COLUMN_NAME"), cols);
+        }
+      }
+
+      assertEquals("NO", rows.get("id").get("IS_NULLABLE"));
+      assertEquals("NO", rows.get("name").get("IS_NULLABLE"));
+      assertEquals("YES", rows.get("salary").get("IS_NULLABLE"));
+      assertEquals("YES", rows.get("note").get("IS_NULLABLE"));
+
+      assertEquals("employee name", rows.get("name").get("REMARKS"));
+
+      assertEquals("YES", rows.get("id").get("IS_AUTOINCREMENT"));
+      assertEquals("NO", rows.get("name").get("IS_AUTOINCREMENT"));
+      assertEquals("NO", rows.get("salary").get("IS_AUTOINCREMENT"));
+
+      String idDefault = rows.get("id").get("COLUMN_DEF");
+      assertNotNull(idDefault, "id should expose its default expression");
+      assertTrue(
+          idDefault.toLowerCase(java.util.Locale.ROOT).contains("nextval"),
+          "id default should reference nextval: " + idDefault);
+      String salaryDefault = rows.get("salary").get("COLUMN_DEF");
+      assertNotNull(salaryDefault);
+      assertTrue(salaryDefault.contains("50000"), "salary default mismatch: " + salaryDefault);
+      assertEquals(null, rows.get("name").get("COLUMN_DEF"));
+      assertEquals(null, rows.get("note").get("COLUMN_DEF"));
+
+      s.execute("DROP TABLE it_meta CASCADE");
+      s.execute("DROP SEQUENCE it_meta_seq");
+    }
+  }
+
+  /**
+   * Regression test for the DECIMAL parameter-binding coercion in {@code
+   * DecimalAvaticaParameterConverter}. Previously the converter required a {@code BigDecimal} input
+   * and threw {@code ClassCastException} (surfaced as "Binding value of type DOUBLE is not yet
+   * supported for expected Arrow type Decimal(...)") when the caller passed any other numeric type
+   * — which DBeaver's Data Editor does when the user types an un-typed literal like {@code 3} into
+   * a DECIMAL column. The fix coerces Double/Integer/Long/String to BigDecimal and rescales to the
+   * column's declared scale.
+   */
+  @Test
+  @Order(205)
+  void testDecimalBindWithNonBigDecimalInput() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_decbind");
+      s.execute("CREATE TABLE it_decbind(id INT, amount DECIMAL(10,3))");
+
+      try (PreparedStatement ps = conn.prepareStatement("INSERT INTO it_decbind VALUES (?, ?)")) {
+        // setDouble on a DECIMAL column used to throw; now must coerce cleanly.
+        ps.setInt(1, 1);
+        ps.setDouble(2, 3.0);
+        assertEquals(1, ps.executeUpdate());
+
+        // setObject with a String that parses as a decimal.
+        ps.setInt(1, 2);
+        ps.setObject(2, "12.345");
+        assertEquals(1, ps.executeUpdate());
+
+        // User-entered extra scale should round (HALF_UP) to match the column.
+        ps.setInt(1, 3);
+        ps.setBigDecimal(2, new java.math.BigDecimal("9.87654"));
+        assertEquals(1, ps.executeUpdate());
+      }
+
+      try (ResultSet rs = s.executeQuery("SELECT id, amount FROM it_decbind ORDER BY id")) {
+        assertTrue(rs.next());
+        assertEquals(new java.math.BigDecimal("3.000"), rs.getBigDecimal(2));
+        assertTrue(rs.next());
+        assertEquals(new java.math.BigDecimal("12.345"), rs.getBigDecimal(2));
+        assertTrue(rs.next());
+        assertEquals(
+            new java.math.BigDecimal("9.877"),
+            rs.getBigDecimal(2),
+            "9.87654 should round HALF_UP to 9.877 at scale=3");
+      }
+
+      s.execute("DROP TABLE it_decbind");
+    }
+  }
 }

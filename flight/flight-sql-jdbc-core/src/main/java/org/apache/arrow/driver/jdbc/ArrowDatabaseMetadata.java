@@ -1189,6 +1189,7 @@ public class ArrowDatabaseMetadata extends AvaticaDatabaseMetaData {
     final VarCharVector isGeneratedColumnVector =
         (VarCharVector) currentRoot.getVector("IS_GENERATEDCOLUMN");
     final VarCharVector remarksVector = (VarCharVector) currentRoot.getVector("REMARKS");
+    final VarCharVector columnDefVector = (VarCharVector) currentRoot.getVector("COLUMN_DEF");
 
     for (int i = 0; i < tableColumnsSize; i++, ordinalIndex++) {
       final Field field = tableColumns.get(i);
@@ -1265,6 +1266,15 @@ public class ArrowDatabaseMetadata extends AvaticaDatabaseMetaData {
       String remarks = columnMetadata.getRemarks();
       if (remarks != null) {
         remarksVector.setSafe(insertIndex, remarks.getBytes(CHARSET));
+      }
+
+      // COLUMN_DEF (the column's default expression) has no place in the Flight SQL
+      // spec's column-metadata keys, so GizmoSQL publishes it under a vendor-prefixed
+      // key. Read it back here when present.
+      String columnDefault =
+          field.getMetadata() == null ? null : field.getMetadata().get("GIZMOSQL:COLUMN_DEFAULT");
+      if (columnDefault != null) {
+        columnDefVector.setSafe(insertIndex, columnDefault.getBytes(CHARSET));
       }
 
       // Fields also don't hold information about IS_AUTOINCREMENT and IS_GENERATEDCOLUMN,
