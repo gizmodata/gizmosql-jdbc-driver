@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import org.apache.arrow.driver.jdbc.client.ArrowFlightSqlClientHandler.PreparedStatement;
 import org.apache.arrow.driver.jdbc.utils.AvaticaParameterBinder;
 import org.apache.arrow.driver.jdbc.utils.ConvertUtils;
@@ -262,6 +263,13 @@ public class ArrowFlightMetaImpl extends MetaImpl {
    * rejects it; a false negative leaves the current (SELECT-like) behavior. SELECT, WITH, VALUES,
    * SHOW, PRAGMA, EXPLAIN, DESCRIBE are query-shaped and deliberately not treated as updates.
    *
+   * <p>DML statements with a {@code RETURNING} clause (e.g. {@code INSERT ... RETURNING id})
+   * produce a result set, so they are deliberately *not* classified as non-query here: the {@code
+   * DoPut}/{@code executeUpdate} path drops the returned rows. Falling through to the default
+   * prepared path lets {@code Statement.executeQuery(...)} surface the {@code RETURNING} rows. The
+   * carve-out detects {@code RETURNING} after stripping comments and string literals, so values
+   * like {@code INSERT INTO t VALUES ('returning')} are not misclassified.
+   *
    * <p>TODO: replace this heuristic once the Flight SQL spec adds an authoritative {@code
    * is_update} field on {@code ActionCreatePreparedStatementResult}. Tracking:
    *
@@ -274,8 +282,11 @@ public class ArrowFlightMetaImpl extends MetaImpl {
    * preparedStatementResult.hasIsUpdate() ? preparedStatementResult.getIsUpdate() :
    * isNonQueryStatement(query)} so we trust the server when it tells us, and fall back to this
    * keyword sniff only for older servers that don't populate the field. Known edge cases this
-   * heuristic misses that the protocol field would fix: CTE-wrapped DML like {@code WITH t AS
-   * (INSERT ... RETURNING *) SELECT ...} which starts with {@code WITH} but actually modifies data.
+   * heuristic still misses that the protocol field would fix: CTE-wrapped DML like {@code WITH t AS
+   * (INSERT ... RETURNING *) SELECT ...} which starts with {@code WITH} but actually modifies data
+   * — the leading-keyword sniff cannot see the inner DML. (The bare {@code WITH ... RETURNING}
+   * top-level case happens to fall through correctly because we don't classify {@code WITH} as DML
+   * in the first place.)
    */
   static boolean isNonQueryStatement(final String sql) {
     if (sql == null) {
@@ -315,7 +326,8 @@ public class ArrowFlightMetaImpl extends MetaImpl {
     // Kept deliberately in sync with the ADBC Python driver's _DDL_DML_KEYWORDS
     // (src/adbc_driver_gizmosql/dbapi.py) so the JDBC and ADBC drivers classify
     // statements the same way. If you add or remove a keyword here, mirror the
-    // change in the ADBC driver repo (gizmodata/adbc-driver-gizmosql).
+    // change in the ADBC driver repo (gizmodata/adbc-driver-gizmosql). The
+    // RETURNING carve-out below is also mirrored in that driver.
     switch (keyword) {
       case "ALTER":
       case "ANALYZE":
@@ -348,10 +360,50 @@ public class ArrowFlightMetaImpl extends MetaImpl {
       case "UPSERT":
       case "USE":
       case "VACUUM":
-        return true;
+        // DML with a RETURNING clause produces a result set; route it through
+        // the prepared path so executeQuery() can surface the returned rows.
+        // See class-level Javadoc for context.
+        return !hasReturningClause(sql);
       default:
         return false;
     }
+  }
+
+  /**
+   * Word-boundary, case-insensitive {@code RETURNING}. Used to opt INSERT/UPDATE/DELETE/MERGE
+   * statements that surface a result set out of the {@code executeUpdate} fast path.
+   */
+  private static final Pattern RETURNING_RE =
+      Pattern.compile("\\bRETURNING\\b", Pattern.CASE_INSENSITIVE);
+
+  /**
+   * Strips single-quoted string literals. SQL escapes a single quote by doubling it ({@code ''}),
+   * so the regex consumes runs of (chars-other-than-quote) or (doubled-quote) before the closing
+   * quote.
+   */
+  private static final Pattern SINGLE_QUOTED_RE = Pattern.compile("'(?:[^']|'')*'");
+
+  /** Strips double-quoted identifiers (DuckDB / standard SQL identifier-quoting). */
+  private static final Pattern DOUBLE_QUOTED_RE = Pattern.compile("\"(?:[^\"]|\"\")*\"");
+
+  /**
+   * Returns {@code true} if {@code sql} contains a {@code RETURNING} keyword outside of comments
+   * and string literals. Comments must already be stripped by the caller — {@link
+   * #isNonQueryStatement(String)} only runs this after its own comment-stripping has passed the
+   * leading-keyword check, so we strip string literals here to avoid false positives like {@code
+   * INSERT INTO t (msg) VALUES ('returning')}.
+   *
+   * <p>Kept deliberately in sync with the ADBC Python driver's {@code _has_returning_clause} helper
+   * (see {@code adbc_driver_gizmosql/dbapi.py} in {@code gizmodata/adbc-driver-gizmosql}). If you
+   * adjust this logic, mirror the change there.
+   */
+  static boolean hasReturningClause(final String sql) {
+    if (sql == null || sql.isEmpty()) {
+      return false;
+    }
+    String withoutStrings = SINGLE_QUOTED_RE.matcher(sql).replaceAll("''");
+    withoutStrings = DOUBLE_QUOTED_RE.matcher(withoutStrings).replaceAll("\"\"");
+    return RETURNING_RE.matcher(withoutStrings).find();
   }
 
   @Override

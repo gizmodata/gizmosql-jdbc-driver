@@ -4,6 +4,11 @@ All notable changes to the GizmoSQL JDBC Driver will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **`Statement.executeQuery("INSERT/UPDATE/DELETE ... RETURNING ...")` now correctly returns the result set.** Previously, `ArrowFlightMetaImpl.isNonQueryStatement` matched on the leading keyword and routed every `INSERT`/`UPDATE`/`DELETE`/`MERGE` through `DoPutCommandStatementUpdate` (the `executeUpdate` fast path). That RPC returns only a row count, so DuckDB's `RETURNING` rows were silently discarded server-side and `executeQuery` raised "Statement did not return a result set". The classifier now returns `false` when the SQL contains a `RETURNING` clause (case-insensitive, with comments and string literals stripped first so `INSERT INTO t VALUES ('returning')` is not misclassified). RETURNING DML falls through to the prepared path, which already correctly surfaces the returned rows. `PreparedStatement.executeQuery` of `INSERT...RETURNING` was already working — only the unprepared path was broken. New unit + integration tests pin both paths down. Mirrors the analogous fix in `gizmodata/adbc-driver-gizmosql` v1.1.6 (issue [#3](https://github.com/gizmodata/adbc-driver-gizmosql/issues/3), originally reported as [gizmosql#163](https://github.com/gizmodata/gizmosql/issues/163) by @fromm1990).
+
 ## [1.6.1] - 2026-04-24
 
 ### Fixed

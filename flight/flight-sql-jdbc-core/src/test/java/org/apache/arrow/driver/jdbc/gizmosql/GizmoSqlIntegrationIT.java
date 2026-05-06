@@ -803,4 +803,127 @@ public class GizmoSqlIntegrationIT {
       s.execute("DROP TABLE it_decbind");
     }
   }
+
+  /**
+   * Regression for {@code Statement.executeQuery("INSERT/UPDATE/DELETE ... RETURNING ...")} via the
+   * unprepared path.
+   *
+   * <p>Before the fix, {@link
+   * org.apache.arrow.driver.jdbc.ArrowFlightMetaImpl#isNonQueryStatement(String)} matched on the
+   * leading keyword and routed any {@code INSERT}/{@code UPDATE}/{@code DELETE} through {@code
+   * DoPutCommandStatementUpdate} (the {@code executeUpdate} fast path). That path returns only a
+   * row count, so the rows DuckDB produces for a {@code RETURNING} clause were silently discarded
+   * server-side. {@code executeQuery} then raised "Statement did not return a result set".
+   *
+   * <p>The carve-out makes {@code isNonQueryStatement} return {@code false} when the SQL contains a
+   * {@code RETURNING} clause, so the statement falls through to the prepared path which correctly
+   * surfaces the returned rows.
+   *
+   * <p>Note: the {@code PreparedStatement.executeQuery} path with {@code RETURNING} already worked
+   * before this fix (it bypasses the keyword sniff entirely and the prepared-statement metadata's
+   * non-empty {@code dataset_schema} steers it through the query path). This test exercises both
+   * paths to pin the working behavior down.
+   */
+  @Test
+  @Order(206)
+  void testInsertReturningResultSet() throws SQLException {
+    assumeServerAvailable();
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement s = conn.createStatement()) {
+      s.execute("DROP TABLE IF EXISTS it_returning");
+      s.execute("DROP SEQUENCE IF EXISTS it_returning_seq");
+      s.execute("CREATE SEQUENCE it_returning_seq");
+      s.execute(
+          "CREATE TABLE it_returning ("
+              + "    id INTEGER DEFAULT nextval('it_returning_seq') PRIMARY KEY,"
+              + "    name VARCHAR"
+              + ")");
+
+      try {
+        // ---- Unprepared Statement.executeQuery with RETURNING ----
+        // Was previously broken: threw "Statement did not return a result set"
+        // because the keyword sniff routed it through executeUpdate.
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs =
+                stmt.executeQuery(
+                    "INSERT INTO it_returning (name) VALUES ('alice'),('bob') "
+                        + "RETURNING id, name")) {
+          assertEquals(2, rs.getMetaData().getColumnCount());
+          int rowCount = 0;
+          int aliceId = -1;
+          while (rs.next()) {
+            rowCount++;
+            String name = rs.getString("name");
+            assertTrue(
+                "alice".equals(name) || "bob".equals(name),
+                "unexpected name from RETURNING: " + name);
+            if ("alice".equals(name)) {
+              aliceId = rs.getInt("id");
+            }
+          }
+          assertEquals(2, rowCount, "RETURNING must surface both inserted rows");
+          assertTrue(aliceId > 0, "RETURNING id must be populated");
+        }
+
+        // The INSERT must have actually persisted (not just been planned).
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT name FROM it_returning ORDER BY name")) {
+          assertTrue(rs.next());
+          assertEquals("alice", rs.getString("name"));
+          assertTrue(rs.next());
+          assertEquals("bob", rs.getString("name"));
+          assertFalse(rs.next());
+        }
+
+        // ---- PreparedStatement.executeQuery with RETURNING ----
+        // This path already worked before the fix (StatementType=SELECT
+        // because dataset_schema is non-empty), but pin it down so we'd
+        // catch a future regression.
+        try (PreparedStatement ps =
+            conn.prepareStatement(
+                "UPDATE it_returning SET name = ? WHERE name = ? RETURNING id, name")) {
+          ps.setString(1, "CAROL");
+          ps.setString(2, "alice");
+          try (ResultSet rs = ps.executeQuery()) {
+            assertTrue(rs.next());
+            assertEquals("CAROL", rs.getString("name"));
+            assertFalse(rs.next());
+          }
+        }
+
+        // DELETE ... RETURNING via unprepared executeQuery — same code path
+        // as the INSERT case above; covers the keyword-sniff carve-out for
+        // the DELETE keyword too.
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs =
+                stmt.executeQuery("DELETE FROM it_returning WHERE name = 'bob' RETURNING id")) {
+          assertTrue(rs.next());
+          assertFalse(rs.next());
+        }
+
+        // Final state: only CAROL should remain.
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT count(*) FROM it_returning")) {
+          assertTrue(rs.next());
+          assertEquals(1, rs.getInt(1));
+        }
+
+        // ---- A statement that LOOKS like RETURNING via a string literal
+        // value must still take the fast executeUpdate path. ----
+        // INSERT INTO it_returning (name) VALUES ('returning')  has the
+        // word "returning" inside a string literal, not as a clause; it
+        // must NOT be routed through the query path.
+        try (Statement stmt = conn.createStatement()) {
+          int updated = stmt.executeUpdate("INSERT INTO it_returning (name) VALUES ('returning')");
+          assertEquals(1, updated);
+        }
+      } finally {
+        try (Statement cleanup = conn.createStatement()) {
+          cleanup.execute("DROP TABLE IF EXISTS it_returning");
+          cleanup.execute("DROP SEQUENCE IF EXISTS it_returning_seq");
+        }
+      }
+    }
+  }
 }
