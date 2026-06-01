@@ -119,13 +119,13 @@ public class ConnectionTest {
   }
 
   /**
-   * When a catalog is configured, {@link Connection#isValid(int)} probes the server-side session via
-   * {@code GetSessionOptions} to detect a session that has been evicted/re-routed (which would
+   * When a catalog is configured, {@link Connection#isValid(int)} probes the server-side session
+   * via {@code GetSessionOptions} to detect a session that has been evicted/re-routed (which would
    * otherwise be silently recreated in the wrong catalog). This must remain backwards compatible
    * with servers that do not implement that RPC: the {@link MockFlightSqlProducer} here does not
    * override {@code getSessionOptions}, so it answers {@code UNIMPLEMENTED} exactly like a GizmoSQL
-   * server older than v1.9.14. The probe must treat that as "cannot determine — assume valid" rather
-   * than discarding an otherwise-healthy connection.
+   * server older than v1.9.14. The probe must treat that as "cannot determine — assume valid"
+   * rather than discarding an otherwise-healthy connection.
    */
   @Test
   public void testIsValidWithCatalogToleratesServerWithoutGetSessionOptions() throws Exception {
