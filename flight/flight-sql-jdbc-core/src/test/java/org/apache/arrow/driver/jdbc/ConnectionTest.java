@@ -119,6 +119,40 @@ public class ConnectionTest {
   }
 
   /**
+   * When a catalog is configured, {@link Connection#isValid(int)} probes the server-side session via
+   * {@code GetSessionOptions} to detect a session that has been evicted/re-routed (which would
+   * otherwise be silently recreated in the wrong catalog). This must remain backwards compatible
+   * with servers that do not implement that RPC: the {@link MockFlightSqlProducer} here does not
+   * override {@code getSessionOptions}, so it answers {@code UNIMPLEMENTED} exactly like a GizmoSQL
+   * server older than v1.9.14. The probe must treat that as "cannot determine — assume valid" rather
+   * than discarding an otherwise-healthy connection.
+   */
+  @Test
+  public void testIsValidWithCatalogToleratesServerWithoutGetSessionOptions() throws Exception {
+    final Properties properties = new Properties();
+
+    properties.put(ArrowFlightConnectionProperty.HOST.camelName(), "localhost");
+    properties.put(
+        ArrowFlightConnectionProperty.PORT.camelName(), FLIGHT_SERVER_TEST_EXTENSION.getPort());
+    properties.put(ArrowFlightConnectionProperty.USER.camelName(), userTest);
+    properties.put(ArrowFlightConnectionProperty.PASSWORD.camelName(), passTest);
+    properties.put(ArrowFlightConnectionProperty.CATALOG.camelName(), "test_catalog");
+    properties.put("useEncryption", false);
+
+    try (Connection connection =
+        DriverManager.getConnection(
+            "jdbc:arrow-flight-sql://"
+                + FLIGHT_SERVER_TEST_EXTENSION.getHost()
+                + ":"
+                + FLIGHT_SERVER_TEST_EXTENSION.getPort(),
+            properties)) {
+      // The catalog-gated probe runs and the server returns UNIMPLEMENTED; the connection must
+      // still be reported valid.
+      assertTrue(connection.isValid(300));
+    }
+  }
+
+  /**
    * Checks if a token is provided it takes precedence over username/pass. In this case, the
    * connection should fail if a token is passed in.
    */
