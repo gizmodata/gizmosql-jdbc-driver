@@ -169,6 +169,34 @@ public final class ArrowFlightConnection extends AvaticaConnection {
   }
 
   /**
+   * {@inheritDoc}
+   *
+   * <p>In addition to the base liveness check, this verifies that the <em>server-side</em> session
+   * still exists when a catalog is configured for the connection. The catalog is applied once, via
+   * {@code SetSessionOptions} at connect time; if the server-side session is later evicted (e.g.
+   * the underlying transport re-routes to a server replica that never saw it), the next query would
+   * silently create a fresh session in the default catalog and fail. Probing here lets a connection
+   * pool detect the stale session and recycle the connection, forcing a fresh Handshake + {@code
+   * SetSessionOptions} in the correct catalog.
+   *
+   * <p>The probe is skipped when no catalog is configured: there is no per-session catalog state to
+   * lose, and probing would otherwise reject brand-new connections whose session has not yet been
+   * lazily created server-side. Against older servers that still lazily create sessions on {@code
+   * GetSessionOptions}, the probe simply succeeds, so behaviour is unchanged.
+   */
+  @Override
+  public boolean isValid(final int timeout) throws SQLException {
+    // Delegates the timeout-validation (throws on negative) and closed-state checks to Avatica.
+    if (!super.isValid(timeout)) {
+      return false;
+    }
+    if (config.getCatalog() == null) {
+      return true;
+    }
+    return clientHandler.isSessionValid(timeout);
+  }
+
+  /**
    * Returns the CREATE VIEW DDL for the given view.
    *
    * <p>JDBC has no standard API for fetching view source, so this is a GizmoSQL-specific extension

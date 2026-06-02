@@ -17,6 +17,7 @@
 package org.apache.arrow.driver.jdbc.client;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -30,6 +31,7 @@ import org.apache.arrow.flight.CallOption;
 import org.apache.arrow.flight.CallStatus;
 import org.apache.arrow.flight.CloseSessionRequest;
 import org.apache.arrow.flight.FlightStatusCode;
+import org.apache.arrow.flight.GetSessionOptionsRequest;
 import org.apache.arrow.flight.sql.FlightSqlClient;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -65,6 +67,47 @@ public class ArrowFlightSqlClientHandlerTest {
     } else {
       assertThrows(SQLException.class, sqlClientHandler::close);
     }
+  }
+
+  /**
+   * {@link ArrowFlightSqlClientHandler#isSessionValid(int)} is the liveness probe behind {@code
+   * Connection.isValid()}. A successful {@code GetSessionOptions} (live session) reports valid; an
+   * evicted/unreachable session reports invalid; and — critically for backwards compatibility with
+   * older servers — an {@code UNIMPLEMENTED} response reports valid so a healthy connection to a
+   * server that doesn't support the probe is never discarded.
+   */
+  @ParameterizedTest
+  @MethodSource
+  public void testIsSessionValid(CallStatus probeFailure, boolean expectedValid) {
+    FlightSqlClient sqlClient = mock(FlightSqlClient.class);
+    if (probeFailure != null) {
+      doThrow(probeFailure.toRuntimeException())
+          .when(sqlClient)
+          .getSessionOptions(any(GetSessionOptionsRequest.class), any(CallOption[].class));
+    }
+    ArrowFlightSqlClientHandler handler =
+        new ArrowFlightSqlClientHandler(
+            "cacheKey",
+            sqlClient,
+            new ArrowFlightSqlClientHandler.Builder(),
+            new ArrayList<>(),
+            Optional.empty(),
+            null);
+
+    assertEquals(expectedValid, handler.isSessionValid(0));
+  }
+
+  private static Object[] testIsSessionValid() {
+    return new Object[] {
+      // Live session: GetSessionOptions returns normally.
+      new Object[] {null, true},
+      // Session evicted server-side (new GizmoSQL returns UNAUTHENTICATED): recycle.
+      new Object[] {new CallStatus(FlightStatusCode.UNAUTHENTICATED, null, null, null), false},
+      // Server unreachable: recycle.
+      new Object[] {new CallStatus(FlightStatusCode.UNAVAILABLE, null, null, null), false},
+      // Server (e.g. older GizmoSQL) doesn't implement the probe: keep the connection.
+      new Object[] {new CallStatus(FlightStatusCode.UNIMPLEMENTED, null, null, null), true},
+    };
   }
 
   private static Object[] testCloseHandlesFlightRuntimeException() {

@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthConfiguration;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthDiscoveryMiddleware;
 import org.apache.arrow.driver.jdbc.client.oauth.OAuthTokenProvider;
@@ -39,6 +40,7 @@ import org.apache.arrow.driver.jdbc.client.utils.ClientAuthenticationUtils;
 import org.apache.arrow.driver.jdbc.client.utils.FlightClientCache;
 import org.apache.arrow.driver.jdbc.client.utils.FlightLocationQueue;
 import org.apache.arrow.flight.CallOption;
+import org.apache.arrow.flight.CallOptions;
 import org.apache.arrow.flight.CallStatus;
 import org.apache.arrow.flight.CancelFlightInfoRequest;
 import org.apache.arrow.flight.CancelFlightInfoResult;
@@ -50,6 +52,7 @@ import org.apache.arrow.flight.FlightGrpcUtils;
 import org.apache.arrow.flight.FlightInfo;
 import org.apache.arrow.flight.FlightRuntimeException;
 import org.apache.arrow.flight.FlightStatusCode;
+import org.apache.arrow.flight.GetSessionOptionsRequest;
 import org.apache.arrow.flight.Location;
 import org.apache.arrow.flight.LocationSchemes;
 import org.apache.arrow.flight.SessionOptionValueFactory;
@@ -444,6 +447,45 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
       }
     } catch (final FlightRuntimeException e) {
       throw new SQLException(e);
+    }
+  }
+
+  /**
+   * Probes the server-side session by issuing a lightweight {@code GetSessionOptions} RPC, to
+   * determine whether a pooled connection is still backed by a live session.
+   *
+   * <p>GizmoSQL creates sessions lazily and applies the catalog only when the client sends {@code
+   * SetSessionOptions} (once, right after the Handshake). If a pooled connection's server-side
+   * session has gone away — for example because the underlying transport re-routed to a server
+   * replica that never saw it — the next query would silently create a fresh session in the default
+   * catalog and fail. A server that supports this probe returns an error for an evicted/unknown
+   * session, letting {@link ArrowFlightConnection#isValid(int)} recycle the connection.
+   *
+   * <p>A server that does not implement the probe answers {@code UNIMPLEMENTED}; in that case we
+   * cannot learn anything about the session and deliberately report it valid rather than discard an
+   * otherwise-healthy connection (mirroring how {@link #isBenignCloseException} treats {@code
+   * UNIMPLEMENTED}).
+   *
+   * @param timeoutSeconds probe timeout in seconds; values {@code <= 0} apply no explicit timeout.
+   * @return {@code true} if the session is live (or the server doesn't implement the probe); {@code
+   *     false} if the session has been evicted or the server is unreachable.
+   */
+  public boolean isSessionValid(final int timeoutSeconds) {
+    final List<CallOption> callOptions = new ArrayList<>(options);
+    if (timeoutSeconds > 0) {
+      callOptions.add(CallOptions.timeout(timeoutSeconds, TimeUnit.SECONDS));
+    }
+    try {
+      sqlClient.getSessionOptions(
+          new GetSessionOptionsRequest(), callOptions.toArray(new CallOption[0]));
+      return true;
+    } catch (final FlightRuntimeException e) {
+      if (FlightStatusCode.UNIMPLEMENTED.equals(e.status().code())) {
+        LOGGER.debug("Server does not implement GetSessionOptions; skipping session probe.");
+        return true;
+      }
+      LOGGER.debug("Session probe failed ({}); reporting connection invalid.", e.status().code());
+      return false;
     }
   }
 
