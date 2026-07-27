@@ -20,8 +20,12 @@
 # GizmoSQL JDBC Driver
 
 [![Maven Central](https://img.shields.io/maven-central/v/com.gizmodata/gizmosql-jdbc-driver)](https://central.sonatype.com/artifact/com.gizmodata/gizmosql-jdbc-driver)
+[![GitHub Release](https://img.shields.io/github/v/release/gizmodata/gizmosql-jdbc-driver)](https://github.com/gizmodata/gizmosql-jdbc-driver/releases/latest)
+[![GitHub Downloads](https://img.shields.io/github/downloads/gizmodata/gizmosql-jdbc-driver/total)](https://github.com/gizmodata/gizmosql-jdbc-driver/releases)
 
 A JDBC driver for [GizmoSQL](https://github.com/gizmodata/gizmosql), based on Arrow Flight SQL.
+
+Requires **JDK 17+** as of v1.7.0 (v1.6.x remains available for JDK 11).
 
 This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-java).
 
@@ -33,7 +37,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 <dependency>
     <groupId>com.gizmodata</groupId>
     <artifactId>gizmosql-jdbc-driver</artifactId>
-    <version>1.6.1</version>
+    <version>1.7.0</version>
 </dependency>
 ```
 
@@ -41,7 +45,7 @@ This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-ja
 
 ```groovy
 dependencies {
-    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.6.1'
+    implementation 'com.gizmodata:gizmosql-jdbc-driver:1.7.0'
 }
 ```
 
@@ -145,7 +149,7 @@ cd gizmosql-jdbc-driver
 
 ## Compatibility
 
-- Java 11 or later
+- Java 17 or later (v1.6.x is the last line supporting Java 11)
 - GizmoSQL server with Flight SQL support
 
 ## License
