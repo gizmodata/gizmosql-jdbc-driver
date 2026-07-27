@@ -196,9 +196,13 @@ public class ArrowFlightJdbcTimeStampVectorAccessorTest {
           final Timestamp resultWithoutCalendar = accessor.getTimestamp(null);
           final Timestamp result = accessor.getTimestamp(calendar);
 
+          // Zoned vectors carry an absolute instant — the calendar must not
+          // shift it. Only wall-clock (naive) vectors are calendar-adjusted.
           long offset =
-              (long) timeZone.getOffset(resultWithoutCalendar.getTime())
-                  - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
+              isVectorZoned()
+                  ? 0L
+                  : (long) timeZone.getOffset(resultWithoutCalendar.getTime())
+                      - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
 
           assertThat(resultWithoutCalendar.getTime() - result.getTime(), is(offset));
           assertThat(accessor.wasNull(), is(false));
@@ -338,8 +342,10 @@ public class ArrowFlightJdbcTimeStampVectorAccessorTest {
           final Date result = accessor.getDate(calendar);
 
           long offset =
-              (long) timeZone.getOffset(resultWithoutCalendar.getTime())
-                  - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
+              isVectorZoned()
+                  ? 0L
+                  : (long) timeZone.getOffset(resultWithoutCalendar.getTime())
+                      - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
 
           assertThat(resultWithoutCalendar.getTime() - result.getTime(), is(offset));
           assertThat(accessor.wasNull(), is(false));
@@ -386,8 +392,10 @@ public class ArrowFlightJdbcTimeStampVectorAccessorTest {
           final Time result = accessor.getTime(calendar);
 
           long offset =
-              (long) timeZone.getOffset(resultWithoutCalendar.getTime())
-                  - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
+              isVectorZoned()
+                  ? 0L
+                  : (long) timeZone.getOffset(resultWithoutCalendar.getTime())
+                      - timeZoneForVector.getOffset(resultWithoutCalendar.getTime());
 
           assertThat(resultWithoutCalendar.getTime() - result.getTime(), is(offset));
           assertThat(accessor.wasNull(), is(false));
@@ -411,12 +419,19 @@ public class ArrowFlightJdbcTimeStampVectorAccessorTest {
     if (object instanceof LocalDateTime) {
       expectedTimestamp = Timestamp.valueOf((LocalDateTime) object);
     } else if (object instanceof Long) {
+      // Zoned vectors carry an absolute instant — the accessor must return it
+      // unshifted (java.sql.Timestamp is an absolute epoch value).
       TimeUnit timeUnit = getTimeUnitForVector(vector);
-      long millis = timeUnit.toMillis((Long) object);
-      long offset = TimeZone.getTimeZone(timeZone).getOffset(millis);
-      expectedTimestamp = new Timestamp(millis + offset);
+      expectedTimestamp = new Timestamp(timeUnit.toMillis((Long) object));
     }
     return expectedTimestamp;
+  }
+
+  private boolean isVectorZoned() {
+    return ((org.apache.arrow.vector.types.pojo.ArrowType.Timestamp)
+                vector.getField().getFieldType().getType())
+            .getTimezone()
+        != null;
   }
 
   /** ZonedDateTime contains all necessary information to generate any java.time object. */
@@ -463,6 +478,38 @@ public class ArrowFlightJdbcTimeStampVectorAccessorTest {
             || vector instanceof TimeStampSecVector);
     Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone(AMERICA_VANCOUVER));
     assertGetStringIsConsistentWithVarCharAccessor(calendar);
+  }
+
+  @ParameterizedTest
+  @MethodSource("data")
+  public void testZonedVectorReturnsAbsoluteInstantRegardlessOfCalendarAndDefaultTz(
+      Supplier<TimeStampVector> vectorSupplier) throws Exception {
+    // Regression for the DBeaver-observed skew: a UTC-zoned TIMESTAMPTZ read
+    // with a non-UTC JVM default timezone AND a client-timezone calendar came
+    // back wrong by 2x the client's UTC offset (e.g. 15:24Z shown as
+    // "19:24 -0400"). A zoned vector is an absolute instant: getTimestamp must
+    // return the exact epoch value for any calendar and any JVM default zone.
+    setup(vectorSupplier);
+    Assumptions.assumeTrue(isVectorZoned());
+
+    TimeZone defaultTz = TimeZone.getDefault();
+    try {
+      TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
+      Calendar clientCalendar = Calendar.getInstance(TimeZone.getTimeZone("America/New_York"));
+      TimeUnit timeUnit = getTimeUnitForVector(vector);
+
+      accessorIterator.iterate(
+          vector,
+          (accessor, currentRow) -> {
+            long expectedEpochMillis = timeUnit.toMillis((Long) vector.getObject(currentRow));
+            assertThat(accessor.getTimestamp(null).getTime(), is(expectedEpochMillis));
+            assertThat(accessor.getTimestamp(clientCalendar).getTime(), is(expectedEpochMillis));
+            assertThat(accessor.getDate(clientCalendar).getTime(), is(expectedEpochMillis));
+            assertThat(accessor.getTime(clientCalendar).getTime(), is(expectedEpochMillis));
+          });
+    } finally {
+      TimeZone.setDefault(defaultTz);
+    }
   }
 
   private void assertGetStringIsConsistentWithVarCharAccessor(Calendar calendar) throws Exception {

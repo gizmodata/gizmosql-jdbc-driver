@@ -145,22 +145,15 @@ public class ArrowFlightJdbcTimeStampVectorAccessor extends ArrowFlightJdbcAcces
 
     long value = holder.value;
 
-    LocalDateTime localDateTime = this.longToLocalDateTime.fromLong(value);
-
-    // Adjust timestamp to desired calendar (if provided) only if the column includes TZ info,
-    // otherwise treat as wall-clock time
-    if (calendar != null && this.isZoned) {
-      TimeZone timeZone = calendar.getTimeZone();
-      long millis = this.timeUnit.toMillis(value);
-      localDateTime =
-          localDateTime.minus(
-              timeZone.getOffset(millis) - this.timeZone.getOffset(millis), ChronoUnit.MILLIS);
-    }
-    return localDateTime;
+    return this.longToLocalDateTime.fromLong(value);
   }
 
   @Override
   public Date getDate(Calendar calendar) {
+    if (this.isZoned) {
+      Instant instant = getInstant();
+      return instant == null ? null : new Date(instant.toEpochMilli());
+    }
     LocalDateTime localDateTime = getLocalDateTime(calendar);
     if (localDateTime == null) {
       return null;
@@ -171,6 +164,10 @@ public class ArrowFlightJdbcTimeStampVectorAccessor extends ArrowFlightJdbcAcces
 
   @Override
   public Time getTime(Calendar calendar) {
+    if (this.isZoned) {
+      Instant instant = getInstant();
+      return instant == null ? null : new Time(instant.toEpochMilli());
+    }
     LocalDateTime localDateTime = getLocalDateTime(calendar);
     if (localDateTime == null) {
       return null;
@@ -181,6 +178,17 @@ public class ArrowFlightJdbcTimeStampVectorAccessor extends ArrowFlightJdbcAcces
 
   @Override
   public Timestamp getTimestamp(Calendar calendar) {
+    // A zoned vector carries an absolute instant. Per JDBC (and matching the
+    // behavior of major drivers, e.g. PostgreSQL), the supplied calendar must
+    // not shift it — java.sql.Timestamp is itself an absolute epoch value.
+    // The previous code adjusted the wall clock by (calendarOffset −
+    // vectorOffset) and then re-interpreted it in the JVM default zone via
+    // Timestamp.valueOf, which skewed results by up to 2× the client's UTC
+    // offset (e.g. DBeaver showing 19:24 -0400 for 15:24Z).
+    if (this.isZoned) {
+      Instant instant = getInstant();
+      return instant == null ? null : Timestamp.from(instant);
+    }
     LocalDateTime localDateTime = getLocalDateTime(calendar);
     if (localDateTime == null) {
       return null;
