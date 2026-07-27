@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-27
 ### Changed
 - **Minimum Java version is now JDK 17** (was JDK 11), following upstream `apache/arrow-java` GH-1078. DBeaver has bundled JDK 17+ for years; users embedding the driver in JDK 11 processes should stay on v1.6.x.
 - **Caught up with upstream `apache/arrow-java`** (the fork had diverged 2026-01-27). Cherry-picked:
