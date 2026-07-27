@@ -19,6 +19,7 @@
 
 # GizmoSQL JDBC Driver
 
+[![GitHub](https://img.shields.io/badge/GitHub-gizmodata%2Fgizmosql--jdbc--driver-blue.svg?logo=Github)](https://github.com/gizmodata/gizmosql-jdbc-driver)
 [![Maven Central](https://img.shields.io/maven-central/v/com.gizmodata/gizmosql-jdbc-driver)](https://central.sonatype.com/artifact/com.gizmodata/gizmosql-jdbc-driver)
 [![GitHub Release](https://img.shields.io/github/v/release/gizmodata/gizmosql-jdbc-driver)](https://github.com/gizmodata/gizmosql-jdbc-driver/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/gizmodata/gizmosql-jdbc-driver/total)](https://github.com/gizmodata/gizmosql-jdbc-driver/releases)
