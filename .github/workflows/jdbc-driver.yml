@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17, 21, 25]
+        jdk: [17, 21, 25]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
             clean install
 
       - name: Verify bytecode fix (PooledByteBufAllocatorL)
-        if: matrix.jdk == 11
+        if: matrix.jdk == 17
         run: |
           JAR="$(pwd)/$(ls flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*-SNAPSHOT.jar | grep -v sources | grep -v javadoc | grep -v tests | head -1)"
           echo "Checking JAR: $JAR"
@@ -119,7 +119,7 @@ jobs:
             test
 
       - name: Upload JDBC Driver JAR
-        if: matrix.jdk == 11
+        if: matrix.jdk == 17
         uses: actions/upload-artifact@v4
         with:
           name: gizmosql-jdbc-driver
@@ -133,7 +133,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17, 21, 25]
+        jdk: [17, 21, 25]
 
     services:
       gizmosql:
@@ -218,7 +218,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 11
+          java-version: 17
           cache: 'maven'
 
       - name: Purge cached memory modules
@@ -261,7 +261,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 11
+          java-version: 17
           cache: 'maven'
           server-id: central
           server-username: MAVEN_USERNAME
