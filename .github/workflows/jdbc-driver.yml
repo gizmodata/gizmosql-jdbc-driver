@@ -134,7 +134,7 @@ jobs:
       fail-fast: false
       matrix:
         jdk: [17, 21, 25]
-        server: ["1.38.5", "latest"]
+        server: ["v1.38.5", "latest"]
 
     services:
       gizmosql:
