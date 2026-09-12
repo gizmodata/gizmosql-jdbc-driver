@@ -90,6 +90,14 @@ under the License.
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <!-- Shade replaces this JAR; never reuse its old dependency classes as input. -->
+          <forceCreation>true</forceCreation>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>flatten-maven-plugin</artifactId>
         <version>1.6.0</version>

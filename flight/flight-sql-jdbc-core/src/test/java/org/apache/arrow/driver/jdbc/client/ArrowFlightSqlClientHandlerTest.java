@@ -20,8 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -33,10 +38,94 @@ import org.apache.arrow.flight.CloseSessionRequest;
 import org.apache.arrow.flight.FlightStatusCode;
 import org.apache.arrow.flight.GetSessionOptionsRequest;
 import org.apache.arrow.flight.sql.FlightSqlClient;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.InOrder;
 
 public class ArrowFlightSqlClientHandlerTest {
+
+  private ArrowFlightSqlClientHandler transactionHandler(FlightSqlClient client) {
+    return new ArrowFlightSqlClientHandler(
+        "transactions",
+        client,
+        new ArrowFlightSqlClientHandler.Builder(),
+        new ArrayList<>(),
+        Optional.empty(),
+        null);
+  }
+
+  @Test
+  public void manualTransactionsReachTheServerAndRestartForEachExecution() {
+    FlightSqlClient client = mock(FlightSqlClient.class);
+    ArrowFlightSqlClientHandler handler = transactionHandler(client);
+    handler.setAutoCommit(false);
+    handler.setAutoCommit(false);
+    handler.executeUpdate("INSERT INTO ledger VALUES (1)");
+    handler.rollback();
+    handler.executeUpdate("INSERT INTO ledger VALUES (2)");
+    handler.commit();
+    handler.getInfo("SELECT * FROM ledger");
+    handler.setAutoCommit(true);
+    InOrder order = inOrder(client);
+    order.verify(client).executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class));
+    order
+        .verify(client)
+        .executeUpdate(eq("INSERT INTO ledger VALUES (1)"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("ROLLBACK"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class));
+    order
+        .verify(client)
+        .executeUpdate(eq("INSERT INTO ledger VALUES (2)"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("COMMIT"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class));
+    order.verify(client).execute(eq("SELECT * FROM ledger"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("COMMIT"), any(CallOption[].class));
+    order.verifyNoMoreInteractions();
+  }
+
+  @Test
+  public void failedTransactionRestartNeverExecutesAWriteInAutoCommit() {
+    FlightSqlClient client = mock(FlightSqlClient.class);
+    ArrowFlightSqlClientHandler handler = transactionHandler(client);
+    when(client.executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class)))
+        .thenReturn(0L)
+        .thenThrow(CallStatus.UNAVAILABLE.toRuntimeException())
+        .thenReturn(0L);
+    handler.setAutoCommit(false);
+    handler.commit();
+    assertThrows(
+        RuntimeException.class, () -> handler.executeUpdate("INSERT INTO ledger VALUES (1)"));
+    verify(client, never())
+        .executeUpdate(eq("INSERT INTO ledger VALUES (1)"), any(CallOption[].class));
+    handler.executeUpdate("INSERT INTO ledger VALUES (1)");
+    verify(client).executeUpdate(eq("INSERT INTO ledger VALUES (1)"), any(CallOption[].class));
+  }
+
+  @Test
+  public void preparedStatementReuseStartsANewTransactionAfterRollback() throws Exception {
+    FlightSqlClient client = mock(FlightSqlClient.class);
+    FlightSqlClient.PreparedStatement prepared = mock(FlightSqlClient.PreparedStatement.class);
+    when(client.prepare(eq("INSERT INTO ledger VALUES (?)"), any(CallOption[].class)))
+        .thenReturn(prepared);
+    ArrowFlightSqlClientHandler handler = transactionHandler(client);
+    handler.setAutoCommit(false);
+    ArrowFlightSqlClientHandler.PreparedStatement statement =
+        handler.prepare("INSERT INTO ledger VALUES (?)");
+    statement.executeUpdate();
+    handler.rollback();
+    statement.executeUpdate();
+    handler.commit();
+    InOrder order = inOrder(client, prepared);
+    order.verify(client).executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class));
+    order.verify(client).prepare(eq("INSERT INTO ledger VALUES (?)"), any(CallOption[].class));
+    order.verify(prepared).executeUpdate(any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("ROLLBACK"), any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("BEGIN TRANSACTION"), any(CallOption[].class));
+    order.verify(prepared).executeUpdate(any(CallOption[].class));
+    order.verify(client).executeUpdate(eq("COMMIT"), any(CallOption[].class));
+    order.verifyNoMoreInteractions();
+  }
 
   @ParameterizedTest
   @MethodSource

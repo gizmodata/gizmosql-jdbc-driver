@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `Connection.commit()` and `rollback()` now control the server transaction. Manual
+  transactions restart before the next operation after a commit or rollback; a
+  failed restart cannot accidentally execute an autocommit write.
+- Prepared batch updates return one JDBC result per batch entry. Flight SQL reports
+  only an aggregate count, so multi-entry batches use `SUCCESS_NO_INFO`; a single
+  entry preserves its known count. Empty batches perform no update.
+- Repeated packaging rebuilds the input JAR before shading, preventing old driver
+  classes from taking precedence over newly compiled dependencies.
+- Backport upstream DATE(MILLISECOND) parameter binding and Unix domain socket
+  channel compatibility fixes.
+
+### Changed
+- Recognize the optional Flight SQL `is_update` prepared-statement metadata, while
+  preserving behavior for older servers which do not supply it.
+- Run live JDBC integration checks against both v1.38.5 and the latest GizmoSQL
+  image, including prepared reuse, batch ledgers, commit/rollback, and autocommit
+  transitions. Temporary tables keep repeat runs isolated after a failed test.
+
+
 ## [1.7.0] - 2026-07-27
 ### Changed
 - **Minimum Java version is now JDK 17** (was JDK 11), following upstream `apache/arrow-java` GH-1078. DBeaver has bundled JDK 17+ for years; users embedding the driver in JDK 11 processes should stay on v1.6.x.

@@ -28,6 +28,13 @@ A JDBC driver for [GizmoSQL](https://github.com/gizmodata/gizmosql), based on Ar
 
 Requires **JDK 17+** as of v1.7.0 (v1.6.x remains available for JDK 11).
 
+The upcoming maintenance release fixes JDBC commit/rollback and prepared batch
+update results, with compatibility checks against GizmoSQL v1.38.5 and the
+v1.39.0 candidate. Multi-entry batches use JDBC `SUCCESS_NO_INFO` for each entry
+because Flight SQL supplies only a total update count. Single-entry batches retain
+the known count. See [CHANGELOG.md](CHANGELOG.md) for the unreleased changes.
+
+
 This project is a fork of [Apache Arrow Java](https://github.com/apache/arrow-java).
 
 ## Installation

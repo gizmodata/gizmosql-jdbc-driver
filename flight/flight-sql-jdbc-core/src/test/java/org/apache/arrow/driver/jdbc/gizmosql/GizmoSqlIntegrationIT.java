@@ -184,8 +184,7 @@ public class GizmoSqlIntegrationIT {
         Statement stmt = conn.createStatement()) {
 
       // Create a test table
-      stmt.execute(
-          "CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name VARCHAR, value DOUBLE)");
+      stmt.execute("CREATE TEMP TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)");
 
       // Insert some data
       stmt.execute("INSERT INTO test_table VALUES (1, 'Alice', 10.5)");
@@ -224,7 +223,7 @@ public class GizmoSqlIntegrationIT {
         Statement stmt = conn.createStatement()) {
 
       // Create table
-      stmt.execute("CREATE TABLE IF NOT EXISTS prepared_test (id INTEGER, name VARCHAR)");
+      stmt.execute("CREATE TEMP TABLE prepared_test (id INTEGER, name VARCHAR)");
       stmt.execute("INSERT INTO prepared_test VALUES (1, 'Test1'), (2, 'Test2'), (3, 'Test3')");
 
       // Use prepared statement with parameter
@@ -384,7 +383,7 @@ public class GizmoSqlIntegrationIT {
         Statement stmt = conn.createStatement()) {
 
       // Create a test table
-      stmt.execute("CREATE TABLE IF NOT EXISTS get_tables_test (id INTEGER)");
+      stmt.execute("CREATE TEMP TABLE get_tables_test (id INTEGER)");
 
       DatabaseMetaData metaData = conn.getMetaData();
       try (ResultSet rs = metaData.getTables(null, null, "get_tables_test", null)) {
@@ -449,7 +448,7 @@ public class GizmoSqlIntegrationIT {
         Statement stmt = conn.createStatement()) {
 
       // Create a table with a list column
-      stmt.execute("CREATE TABLE IF NOT EXISTS list_test (id INTEGER, anomalies INTEGER[])");
+      stmt.execute("CREATE TEMP TABLE list_test (id INTEGER, anomalies INTEGER[])");
       stmt.execute("INSERT INTO list_test VALUES (1, [0, 1, 2])");
       stmt.execute("INSERT INTO list_test VALUES (2, [3, 4, 5])");
       stmt.execute("INSERT INTO list_test VALUES (3, [0, 6, 7])");
@@ -923,6 +922,76 @@ public class GizmoSqlIntegrationIT {
           cleanup.execute("DROP TABLE IF EXISTS it_returning");
           cleanup.execute("DROP SEQUENCE IF EXISTS it_returning_seq");
         }
+      }
+    }
+  }
+
+  @Test
+  @Order(207)
+  void testPreparedReuseAndBatchLedger() throws SQLException {
+    assumeServerAvailable();
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE it_reuse_ledger (id INTEGER PRIMARY KEY, value VARCHAR)");
+      try (PreparedStatement insert =
+          conn.prepareStatement("INSERT INTO it_reuse_ledger VALUES (?, ?)")) {
+        for (int id = 0; id < 20; id++) {
+          insert.setInt(1, id);
+          insert.setString(2, "bound ' ; -- value");
+          assertEquals(1, insert.executeUpdate());
+        }
+        for (int id = 20; id < 25; id++) {
+          insert.setInt(1, id);
+          insert.setString(2, "batch value");
+          insert.addBatch();
+        }
+        int[] counts = insert.executeBatch();
+        assertEquals(5, counts.length);
+        for (int count : counts) {
+          assertEquals(Statement.SUCCESS_NO_INFO, count);
+        }
+        assertEquals(0, insert.executeBatch().length);
+      }
+      try (ResultSet rows = stmt.executeQuery("SELECT count(*), sum(id) FROM it_reuse_ledger")) {
+        assertTrue(rows.next());
+        assertEquals(25, rows.getInt(1));
+        assertEquals(300, rows.getInt(2));
+      }
+    }
+  }
+
+  @Test
+  @Order(208)
+  void testCommitRollbackAndAutocommitTransition() throws SQLException {
+    assumeServerAvailable();
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE it_transaction_ledger (id INTEGER)");
+      conn.setAutoCommit(false);
+      try (PreparedStatement insert =
+          conn.prepareStatement("INSERT INTO it_transaction_ledger VALUES (?)")) {
+        insert.setInt(1, 1);
+        assertEquals(1, insert.executeUpdate());
+        conn.rollback();
+        try (ResultSet rows = stmt.executeQuery("SELECT count(*) FROM it_transaction_ledger")) {
+          assertTrue(rows.next());
+          assertEquals(0, rows.getInt(1));
+        }
+        insert.setInt(1, 2);
+        assertEquals(1, insert.executeUpdate());
+        conn.commit();
+        insert.setInt(1, 3);
+        assertEquals(1, insert.executeUpdate());
+        conn.rollback();
+        insert.setInt(1, 4);
+        assertEquals(1, insert.executeUpdate());
+        conn.setAutoCommit(true);
+      }
+      try (ResultSet rows =
+          stmt.executeQuery("SELECT count(*), sum(id) FROM it_transaction_ledger")) {
+        assertTrue(rows.next());
+        assertEquals(2, rows.getInt(1));
+        assertEquals(6, rows.getInt(2));
       }
     }
   }

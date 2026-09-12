@@ -127,17 +127,18 @@ jobs:
           if-no-files-found: error
 
   integration-test:
-    name: Integration Tests (JDK ${{ matrix.jdk }})
+    name: Integration Tests (JDK ${{ matrix.jdk }}, GizmoSQL ${{ matrix.server }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         jdk: [17, 21, 25]
+        server: ["1.38.5", "latest"]
 
     services:
       gizmosql:
-        image: gizmodata/gizmosql:latest
+        image: gizmodata/gizmosql:${{ matrix.server }}
         ports:
           - 31337:31337
         env:

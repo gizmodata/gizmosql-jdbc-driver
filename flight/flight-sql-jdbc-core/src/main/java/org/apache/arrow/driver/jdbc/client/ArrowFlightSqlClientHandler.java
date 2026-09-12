@@ -87,6 +87,8 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
 
   private final String cacheKey;
   private final FlightSqlClient sqlClient;
+  private boolean transactionActive;
+  private boolean autoCommit = true;
   private final Set<CallOption> options = new HashSet<>();
   private final Builder builder;
   private final Optional<String> catalog;
@@ -269,7 +271,46 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
    * @return a {@code FlightStream} of results.
    */
   public FlightInfo getInfo(final String query) {
+    ensureTransaction();
     return sqlClient.execute(query, getOptions());
+  }
+
+  /** Change transaction mode on the server, not only in Avatica's local properties. */
+  public synchronized void setAutoCommit(final boolean autoCommit) {
+    if (this.autoCommit == autoCommit) {
+      return;
+    }
+    if (autoCommit && transactionActive) {
+      sqlClient.executeUpdate("COMMIT", getOptions());
+      transactionActive = false;
+    } else if (!autoCommit && !transactionActive) {
+      sqlClient.executeUpdate("BEGIN TRANSACTION", getOptions());
+      transactionActive = true;
+    }
+    this.autoCommit = autoCommit;
+  }
+
+  private synchronized void ensureTransaction() {
+    if (!autoCommit && !transactionActive) {
+      sqlClient.executeUpdate("BEGIN TRANSACTION", getOptions());
+      transactionActive = true;
+    }
+  }
+
+  /** Commit manual work; the next execution starts a fresh transaction. */
+  public synchronized void commit() {
+    if (transactionActive) {
+      sqlClient.executeUpdate("COMMIT", getOptions());
+      transactionActive = false;
+    }
+  }
+
+  /** Roll back manual work; the next execution starts a fresh transaction. */
+  public synchronized void rollback() {
+    if (transactionActive) {
+      sqlClient.executeUpdate("ROLLBACK", getOptions());
+      transactionActive = false;
+    }
   }
 
   /**
@@ -280,6 +321,7 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
    * @return the count of affected rows as reported by the server.
    */
   public long executeUpdate(final String query) {
+    ensureTransaction();
     return sqlClient.executeUpdate(query, getOptions());
   }
 
@@ -404,6 +446,17 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
      */
     Schema getParameterSchema();
 
+    /**
+     * Gets whether this {@link PreparedStatement} is an update statement.
+     *
+     * @return {@code true} if this is an update statement, {@code false} if it's a query, or {@code
+     *     null} if the server did not provide this information.
+     */
+    @Nullable
+    default Boolean isUpdate() {
+      return null;
+    }
+
     void setParameters(VectorSchemaRoot parameters);
 
     @Override
@@ -496,21 +549,30 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
    * @return a new prepared statement.
    */
   public PreparedStatement prepare(final String query) {
+    ensureTransaction();
     final FlightSqlClient.PreparedStatement preparedStatement =
         sqlClient.prepare(query, getOptions());
     return new PreparedStatement() {
       @Override
       public FlightInfo executeQuery() throws SQLException {
+        ensureTransaction();
         return preparedStatement.execute(getOptions());
       }
 
       @Override
       public long executeUpdate() {
+        ensureTransaction();
         return preparedStatement.executeUpdate(getOptions());
       }
 
       @Override
       public StatementType getType() {
+        // If the server provided the is_update field, use it to determine the statement type
+        final Boolean isUpdate = preparedStatement.isUpdate();
+        if (isUpdate != null) {
+          return isUpdate ? StatementType.UPDATE : StatementType.SELECT;
+        }
+        // Fall back to the legacy logic: check if the result set schema is empty
         final Schema schema = preparedStatement.getResultSetSchema();
         return schema.getFields().isEmpty() ? StatementType.UPDATE : StatementType.SELECT;
       }
@@ -528,6 +590,11 @@ public final class ArrowFlightSqlClientHandler implements AutoCloseable {
       @Override
       public void setParameters(VectorSchemaRoot parameters) {
         preparedStatement.setParameters(parameters);
+      }
+
+      @Override
+      public Boolean isUpdate() {
+        return preparedStatement.isUpdate();
       }
 
       @Override
