@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- README documents the JVM option the driver requires on JDK 17+
+  (`--add-opens=java.base/java.nio=ALL-UNNAMED`). Without it the first query fails.
+  On JDK 25+ it also recommends `--sun-misc-unsafe-memory-access=allow`.
+
 ## [1.8.0] - 2026-10-01
 
 ### Fixed

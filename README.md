@@ -26,7 +26,8 @@
 
 A JDBC driver for [GizmoSQL](https://github.com/gizmodata/gizmosql), based on Arrow Flight SQL.
 
-Requires **JDK 17+** as of v1.7.0 (v1.6.x remains available for JDK 11).
+Requires **JDK 17+** as of v1.7.0 (v1.6.x remains available for JDK 11), started with
+`--add-opens=java.base/java.nio=ALL-UNNAMED`. See [Required JVM option](#required-jvm-option).
 
 v1.8.0 makes JDBC `commit()`/`rollback()` control the server transaction, fixes
 prepared batch update results, and updates bundled dependencies to clear known
@@ -58,6 +59,33 @@ dependencies {
     implementation 'com.gizmodata:gizmosql-jdbc-driver:1.8.0'
 }
 ```
+
+## Required JVM option
+
+Apache Arrow, which the driver is built on, needs reflective access to `java.nio`.
+On JDK 17 and later, start the JVM that loads the driver with:
+
+```
+--add-opens=java.base/java.nio=ALL-UNNAMED
+```
+
+Without it, the first query fails with
+`sun.misc.Unsafe or java.nio.DirectByteBuffer.<init>(long, int) not available`.
+
+```bash
+java --add-opens=java.base/java.nio=ALL-UNNAMED -cp gizmosql-jdbc-driver-1.8.0.jar MyApp.java
+```
+
+If you can't change the `java` command line, set the option through the environment:
+
+```bash
+export JDK_JAVA_OPTIONS="--add-opens=java.base/java.nio=ALL-UNNAMED"
+```
+
+For a desktop SQL tool, add the same option to the tool's JVM options.
+
+On **JDK 25+**, also add `--sun-misc-unsafe-memory-access=allow`. The driver works
+without it, but the JVM then prints `sun.misc.Unsafe` deprecation warnings.
 
 ## Usage
 
@@ -160,6 +188,7 @@ cd gizmosql-jdbc-driver
 ## Compatibility
 
 - Java 17 or later (v1.6.x is the last line supporting Java 11)
+- JVM option `--add-opens=java.base/java.nio=ALL-UNNAMED` (see [Required JVM option](#required-jvm-option))
 - GizmoSQL server with Flight SQL support
 
 ## License
