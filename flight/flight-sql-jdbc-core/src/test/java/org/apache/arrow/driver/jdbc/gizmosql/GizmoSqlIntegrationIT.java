@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -57,7 +57,7 @@ public class GizmoSqlIntegrationIT {
 
   private static String jdbcUrl;
   private static Properties connectionProps;
-  private static boolean serverAvailable = false;
+  private static String serverUnavailableReason = null;
 
   @BeforeAll
   static void setUp() {
@@ -79,12 +79,13 @@ public class GizmoSqlIntegrationIT {
       connectionProps.setProperty("disableCertificateVerification", "true");
     }
 
-    // Check if server is available
+    // Probe the server once so every test can report the same connection error.
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
-      serverAvailable = conn != null && !conn.isClosed();
+      if (conn == null || conn.isClosed()) {
+        serverUnavailableReason = "connection was null or closed";
+      }
     } catch (SQLException e) {
-      System.err.println("GizmoSQL server not available at " + jdbcUrl + ": " + e.getMessage());
-      serverAvailable = false;
+      serverUnavailableReason = e.getMessage();
     }
   }
 
@@ -93,14 +94,20 @@ public class GizmoSqlIntegrationIT {
     // Cleanup if needed
   }
 
-  private void assumeServerAvailable() {
-    assumeTrue(serverAvailable, "GizmoSQL server not available - skipping test");
+  /**
+   * Fails (never skips) when the server is unreachable. These tests gate releases, so an
+   * unreachable server must turn the job red rather than pass with every test skipped.
+   */
+  private void requireServerAvailable() {
+    if (serverUnavailableReason != null) {
+      fail("GizmoSQL server not available at " + jdbcUrl + ": " + serverUnavailableReason);
+    }
   }
 
   @Test
   @Order(1)
   void testConnection() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       assertNotNull(conn);
@@ -111,7 +118,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(2)
   void testDatabaseMetaData() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -140,7 +147,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(3)
   void testSimpleQuery() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -155,7 +162,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(4)
   void testQueryWithMultipleRows() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -178,14 +185,13 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(5)
   void testCreateAndQueryTable() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
 
       // Create a test table
-      stmt.execute(
-          "CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name VARCHAR, value DOUBLE)");
+      stmt.execute("CREATE TEMP TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)");
 
       // Insert some data
       stmt.execute("INSERT INTO test_table VALUES (1, 'Alice', 10.5)");
@@ -218,13 +224,13 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(6)
   void testPreparedStatement() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
 
       // Create table
-      stmt.execute("CREATE TABLE IF NOT EXISTS prepared_test (id INTEGER, name VARCHAR)");
+      stmt.execute("CREATE TEMP TABLE prepared_test (id INTEGER, name VARCHAR)");
       stmt.execute("INSERT INTO prepared_test VALUES (1, 'Test1'), (2, 'Test2'), (3, 'Test3')");
 
       // Use prepared statement with parameter
@@ -250,7 +256,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(7)
   void testResultSetMetaData() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -271,7 +277,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(8)
   void testNullHandling() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -288,7 +294,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(9)
   void testLargeResultSet() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -305,7 +311,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(10)
   void testAggregation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -324,7 +330,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(11)
   void testTransactionIsolation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       // Check that we can get transaction isolation level
@@ -341,7 +347,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(12)
   void testGetCatalogs() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -360,7 +366,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(13)
   void testGetSchemas() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -378,13 +384,13 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(14)
   void testGetTables() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
 
       // Create a test table
-      stmt.execute("CREATE TABLE IF NOT EXISTS get_tables_test (id INTEGER)");
+      stmt.execute("CREATE TEMP TABLE get_tables_test (id INTEGER)");
 
       DatabaseMetaData metaData = conn.getMetaData();
       try (ResultSet rs = metaData.getTables(null, null, "get_tables_test", null)) {
@@ -409,7 +415,7 @@ public class GizmoSqlIntegrationIT {
   @Order(100)
   void testArrayLiteralBracketSyntax() throws SQLException {
     // Issue #95: Verify that DuckDB's bracket syntax for arrays works
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -427,7 +433,7 @@ public class GizmoSqlIntegrationIT {
   @Order(101)
   void testArrayLiteralListSyntax() throws SQLException {
     // Test DuckDB's list_value function as alternative
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -443,13 +449,13 @@ public class GizmoSqlIntegrationIT {
   @Order(102)
   void testListHasAnyFunction() throws SQLException {
     // Issue #95: This was the specific use case that triggered the issue
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
 
       // Create a table with a list column
-      stmt.execute("CREATE TABLE IF NOT EXISTS list_test (id INTEGER, anomalies INTEGER[])");
+      stmt.execute("CREATE TEMP TABLE list_test (id INTEGER, anomalies INTEGER[])");
       stmt.execute("INSERT INTO list_test VALUES (1, [0, 1, 2])");
       stmt.execute("INSERT INTO list_test VALUES (2, [3, 4, 5])");
       stmt.execute("INSERT INTO list_test VALUES (3, [0, 6, 7])");
@@ -474,7 +480,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(103)
   void testNestedArrays() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -489,7 +495,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(104)
   void testArrayAggregation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -506,7 +512,7 @@ public class GizmoSqlIntegrationIT {
   @Order(105)
   void testArrayWithMixedTypes() throws SQLException {
     // Test that string arrays work
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -527,7 +533,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(200)
   void testDecimalParameterRoundTrip() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -562,7 +568,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(201)
   void testGetIndexInfo() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -621,7 +627,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(202)
   void testGetViewDefinition() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -658,7 +664,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(203)
   void testDmlUpdateCount() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -696,7 +702,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(204)
   void testGetColumnsEnrichment() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -764,7 +770,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(205)
   void testDecimalBindWithNonBigDecimalInput() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -827,7 +833,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(206)
   void testInsertReturningResultSet() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -923,6 +929,76 @@ public class GizmoSqlIntegrationIT {
           cleanup.execute("DROP TABLE IF EXISTS it_returning");
           cleanup.execute("DROP SEQUENCE IF EXISTS it_returning_seq");
         }
+      }
+    }
+  }
+
+  @Test
+  @Order(207)
+  void testPreparedReuseAndBatchLedger() throws SQLException {
+    requireServerAvailable();
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE it_reuse_ledger (id INTEGER PRIMARY KEY, value VARCHAR)");
+      try (PreparedStatement insert =
+          conn.prepareStatement("INSERT INTO it_reuse_ledger VALUES (?, ?)")) {
+        for (int id = 0; id < 20; id++) {
+          insert.setInt(1, id);
+          insert.setString(2, "bound ' ; -- value");
+          assertEquals(1, insert.executeUpdate());
+        }
+        for (int id = 20; id < 25; id++) {
+          insert.setInt(1, id);
+          insert.setString(2, "batch value");
+          insert.addBatch();
+        }
+        int[] counts = insert.executeBatch();
+        assertEquals(5, counts.length);
+        for (int count : counts) {
+          assertEquals(Statement.SUCCESS_NO_INFO, count);
+        }
+        assertEquals(0, insert.executeBatch().length);
+      }
+      try (ResultSet rows = stmt.executeQuery("SELECT count(*), sum(id) FROM it_reuse_ledger")) {
+        assertTrue(rows.next());
+        assertEquals(25, rows.getInt(1));
+        assertEquals(300, rows.getInt(2));
+      }
+    }
+  }
+
+  @Test
+  @Order(208)
+  void testCommitRollbackAndAutocommitTransition() throws SQLException {
+    requireServerAvailable();
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE it_transaction_ledger (id INTEGER)");
+      conn.setAutoCommit(false);
+      try (PreparedStatement insert =
+          conn.prepareStatement("INSERT INTO it_transaction_ledger VALUES (?)")) {
+        insert.setInt(1, 1);
+        assertEquals(1, insert.executeUpdate());
+        conn.rollback();
+        try (ResultSet rows = stmt.executeQuery("SELECT count(*) FROM it_transaction_ledger")) {
+          assertTrue(rows.next());
+          assertEquals(0, rows.getInt(1));
+        }
+        insert.setInt(1, 2);
+        assertEquals(1, insert.executeUpdate());
+        conn.commit();
+        insert.setInt(1, 3);
+        assertEquals(1, insert.executeUpdate());
+        conn.rollback();
+        insert.setInt(1, 4);
+        assertEquals(1, insert.executeUpdate());
+        conn.setAutoCommit(true);
+      }
+      try (ResultSet rows =
+          stmt.executeQuery("SELECT count(*), sum(id) FROM it_transaction_ledger")) {
+        assertTrue(rows.next());
+        assertEquals(2, rows.getInt(1));
+        assertEquals(6, rows.getInt(2));
       }
     }
   }

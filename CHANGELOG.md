@@ -6,6 +6,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-01
+
+### Fixed
+- `Connection.commit()` and `rollback()` now control the server transaction. Manual
+  transactions restart before the next operation after a commit or rollback; a
+  failed restart cannot accidentally execute an autocommit write.
+- Prepared batch updates return one JDBC result per batch entry. Flight SQL reports
+  only an aggregate count, so multi-entry batches use `SUCCESS_NO_INFO`; a single
+  entry preserves its known count. Empty batches perform no update.
+- Repeated packaging rebuilds the input JAR before shading, preventing old driver
+  classes from taking precedence over newly compiled dependencies.
+- Backport upstream DATE(MILLISECOND) parameter binding and Unix domain socket
+  channel compatibility fixes.
+- `DATE` values before 1970 no longer come back one day late when `getDate(Calendar)`
+  applies a non-zero calendar offset (upstream GH-1293).
+- An unsupported pooled buffer now raises the intended "requires sun.misc.Unsafe"
+  error instead of a later `ClassCastException`, and the allocator's normal-buffer
+  count metric reports the count rather than the size (upstream #1259).
+
+### Security
+- Updated bundled dependencies to clear every known advisory reported by OSV
+  against the shaded driver JAR (previously 9 packages, about 50 advisories):
+  - Netty 4.2.9 -> 4.2.17 (incl. critical CVE-2026-75595 SNI routing bypass and
+    high CVE-2026-50010, where wrapping a plain trust manager silently disabled
+    hostname verification; also HTTP/2 DoS and decompression fixes). netty-tcnative
+    2.0.74 -> 2.0.81 follows the Netty BOM.
+  - Jackson 2.21.0 -> 2.22.3 (polymorphic-type-validator bypasses, SSRF via eager
+    DNS resolution, and parser DoS fixes).
+  - BouncyCastle 1.84 -> 1.85 (critical CVE-2026-8763 name-constraints bypass,
+    CVE-2026-13506 ASN.1 nesting-depth guard).
+  - json-smart 2.5.1 -> 2.5.2 (CVE-2024-57699 uncontrolled recursion).
+- Also aligned with upstream `apache/arrow-java`: gRPC 1.79.0 -> 1.83.1, protobuf
+  4.33.4 -> 4.35.1, Guava 33.4.8 -> 33.6.0, commons-codec 1.20.0 -> 1.22.1,
+  Caffeine 3.2.3 -> 3.2.4, SLF4J 2.0.17 -> 2.0.18 (proto-google-common-protos in
+  the driver follows gRPC: 2.63.2 -> 2.64.1).
+
+### Changed
+- Recognize the optional Flight SQL `is_update` prepared-statement metadata, while
+  preserving behavior for older servers which do not supply it.
+- Run live JDBC integration checks against both v1.40.0 and the latest GizmoSQL
+  image, including prepared reuse, batch ledgers, commit/rollback, and autocommit
+  transitions. Temporary tables keep repeat runs isolated after a failed test.
+- Releases are now strictly gated on the live e2e suite. `GizmoSqlIntegrationIT`
+  previously *skipped* every test when the server was unreachable, so the
+  integration job passed and a release could publish without any e2e test having
+  run. The tests now fail instead, and failsafe fails when zero integration tests
+  run. Local `docker-compose.test.yml` now pins GizmoSQL v1.40.0.
+- CI actions moved off the deprecated Node 20 runtime: `checkout` v7,
+  `setup-java` v6, `upload-artifact` v7, `attest-build-provenance` v4,
+  `action-gh-release` v3.
+
+
 ## [1.7.0] - 2026-07-27
 ### Changed
 - **Minimum Java version is now JDK 17** (was JDK 11), following upstream `apache/arrow-java` GH-1078. DBeaver has bundled JDK 17+ for years; users embedding the driver in JDK 11 processes should stay on v1.6.x.

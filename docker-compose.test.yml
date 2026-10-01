@@ -7,7 +7,7 @@
 
 services:
   gizmosql:
-    image: gizmodata/gizmosql:latest
+    image: gizmodata/gizmosql:v1.40.0
     ports:
       - "31337:31337"
       - "31338:31338"

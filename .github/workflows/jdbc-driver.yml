@@ -41,13 +41,13 @@ jobs:
         jdk: [17, 21, 25]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
       - name: Set up JDK ${{ matrix.jdk }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: ${{ matrix.jdk }}
@@ -120,24 +120,25 @@ jobs:
 
       - name: Upload JDBC Driver JAR
         if: matrix.jdk == 17
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gizmosql-jdbc-driver
           path: flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
           if-no-files-found: error
 
   integration-test:
-    name: Integration Tests (JDK ${{ matrix.jdk }})
+    name: Integration Tests (JDK ${{ matrix.jdk }}, GizmoSQL ${{ matrix.server }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         jdk: [17, 21, 25]
+        server: ["v1.40.0", "latest"]
 
     services:
       gizmosql:
-        image: gizmodata/gizmosql:latest
+        image: gizmodata/gizmosql:${{ matrix.server }}
         ports:
           - 31337:31337
         env:
@@ -157,13 +158,13 @@ jobs:
           done
           echo "GizmoSQL did not start in time" && exit 1
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
       - name: Set up JDK ${{ matrix.jdk }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: ${{ matrix.jdk }}
@@ -202,6 +203,9 @@ jobs:
             $EXTRA_ARGS \
             failsafe:integration-test failsafe:verify
 
+  # Every publish job must `needs:` both test jobs. GizmoSqlIntegrationIT fails (never
+  # skips) when the server is unreachable, and failsafe fails when zero ITs run, so a
+  # green integration-test job means the live e2e suite actually ran on this commit.
   publish-snapshot:
     name: Publish Snapshot
     needs: [build, integration-test]
@@ -209,13 +213,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: 17
@@ -252,13 +256,13 @@ jobs:
       attestations: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: 17
@@ -360,7 +364,7 @@ jobs:
             deploy
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: flight/flight-sql-jdbc-driver/target/gizmosql-jdbc-driver-*.jar
 
@@ -404,7 +408,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: true

@@ -19,15 +19,19 @@ package org.apache.arrow.driver.jdbc;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -38,6 +42,7 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.Types;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -99,6 +104,40 @@ public class ArrowFlightPreparedStatementTest {
   }
 
   @Test
+  public void testSimpleQueryNoParameterBindingWithExecuteV2() throws SQLException {
+    final String query = "SELECT * FROM TEST_V2";
+    final Schema schema =
+        new Schema(Collections.singletonList(Field.nullable("", Types.MinorType.INT.getType())));
+    PRODUCER.addSelectQuery(
+        query,
+        schema,
+        Collections.singletonList(
+            listener -> {
+              try (final BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+                  final VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator)) {
+                root.allocateNew();
+                ((IntVector) root.getVector(0)).setSafe(0, 123);
+                root.setRowCount(1);
+                listener.start(root);
+                listener.putNext();
+              } finally {
+                listener.completed();
+              }
+            }),
+        false);
+    try (final PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+      boolean isResultSet = preparedStatement.execute();
+      assertTrue(isResultSet);
+      final ResultSet resultSet = preparedStatement.getResultSet();
+      assertTrue(resultSet.next());
+      assertEquals(123, resultSet.getInt(1));
+      assertFalse(resultSet.next());
+      assertFalse(preparedStatement.getMoreResults());
+      assertEquals(-1, preparedStatement.getUpdateCount());
+    }
+  }
+
+  @Test
   public void testQueryWithParameterBinding() throws SQLException {
     final String query = "Fake query with parameters";
     final Schema schema =
@@ -138,6 +177,49 @@ public class ArrowFlightPreparedStatementTest {
       preparedStatement.setString(1, "foo");
       preparedStatement.setArray(
           2, connection.createArrayOf("INTEGER", new Integer[] {1, 2, null}));
+
+      try (final ResultSet resultSet = preparedStatement.executeQuery()) {
+        resultSet.next();
+        assert true;
+      }
+    }
+  }
+
+  @Test
+  public void testQueryWithDateMillisecondParameterBinding() throws SQLException {
+    final String query = "Fake query with date millisecond parameter";
+    final Schema schema =
+        new Schema(Collections.singletonList(Field.nullable("", Types.MinorType.INT.getType())));
+    final Schema parameterSchema =
+        new Schema(
+            Collections.singletonList(
+                Field.nullable("", new ArrowType.Date(DateUnit.MILLISECOND))));
+    final LocalDate date = LocalDate.of(2000, 1, 1);
+    final List<List<Object>> expected =
+        Collections.singletonList(Collections.singletonList(date.atStartOfDay()));
+
+    PRODUCER.addSelectQuery(
+        query,
+        schema,
+        Collections.singletonList(
+            listener -> {
+              try (final BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+                  final VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator)) {
+                ((IntVector) root.getVector(0)).setSafe(0, 10);
+                root.setRowCount(1);
+                listener.start(root);
+                listener.putNext();
+              } catch (final Throwable throwable) {
+                listener.error(throwable);
+              } finally {
+                listener.completed();
+              }
+            }));
+
+    PRODUCER.addExpectedParameters(query, parameterSchema, expected);
+
+    try (final PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+      preparedStatement.setDate(1, Date.valueOf(date));
 
       try (final ResultSet resultSet = preparedStatement.executeQuery()) {
         resultSet.next();
@@ -204,6 +286,20 @@ public class ArrowFlightPreparedStatementTest {
   }
 
   @Test
+  public void testUpdateQueryWithExecuteV2() throws SQLException {
+    String query = "Fake update with execute V2";
+    PRODUCER.addUpdateQuery(query, /*updatedRows*/ 99, true);
+    try (final PreparedStatement stmt = connection.prepareStatement(query)) {
+      boolean isResultSet = stmt.execute();
+      assertFalse(isResultSet);
+      int updated = stmt.getUpdateCount();
+      assertEquals(99, updated);
+      assertFalse(stmt.getMoreResults());
+      assertEquals(-1, stmt.getUpdateCount());
+    }
+  }
+
+  @Test
   public void testUpdateQueryWithParameters() throws SQLException {
     String query = "Fake update with parameters";
     PRODUCER.addUpdateQuery(query, /*updatedRows*/ 42);
@@ -248,7 +344,24 @@ public class ArrowFlightPreparedStatementTest {
       stmt.setArray(2, connection.createArrayOf("INTEGER", new Integer[] {0, -1, 100000}));
       stmt.addBatch();
       int[] updated = stmt.executeBatch();
-      assertEquals(42, updated[0]);
+      assertArrayEquals(new int[] {Statement.SUCCESS_NO_INFO, Statement.SUCCESS_NO_INFO}, updated);
+      assertEquals(0, stmt.executeBatch().length);
+    }
+  }
+
+  @Test
+  public void testSingleEntryBatchPreservesKnownUpdateCount() throws SQLException {
+    String query = "Fake single entry batch";
+    PRODUCER.addUpdateQuery(query, /*updatedRows*/ 42);
+    PRODUCER.addExpectedParameters(
+        query,
+        new Schema(Collections.singletonList(Field.nullable("", ArrowType.Utf8.INSTANCE))),
+        Collections.singletonList(Collections.singletonList(new Text("one"))));
+    try (PreparedStatement stmt = connection.prepareStatement(query)) {
+      stmt.setString(1, "one");
+      stmt.addBatch();
+      assertArrayEquals(new int[] {42}, stmt.executeBatch());
+      assertEquals(0, stmt.executeBatch().length);
     }
   }
 }

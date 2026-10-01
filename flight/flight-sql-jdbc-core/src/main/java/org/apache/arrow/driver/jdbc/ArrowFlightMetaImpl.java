@@ -19,7 +19,9 @@ package org.apache.arrow.driver.jdbc;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -54,7 +56,8 @@ public class ArrowFlightMetaImpl extends MetaImpl {
   }
 
   /** Construct a signature. */
-  static Signature newSignature(final String sql, Schema resultSetSchema, Schema parameterSchema) {
+  static Signature newSignature(
+      final String sql, Schema resultSetSchema, Schema parameterSchema, Boolean isUpdate) {
     List<ColumnMetaData> columnMetaData =
         resultSetSchema == null
             ? new ArrayList<>()
@@ -63,10 +66,17 @@ public class ArrowFlightMetaImpl extends MetaImpl {
         parameterSchema == null
             ? new ArrayList<>()
             : ConvertUtils.convertArrowFieldsToAvaticaParameters(parameterSchema.getFields());
-    StatementType statementType =
-        resultSetSchema == null || resultSetSchema.getFields().isEmpty()
-            ? StatementType.IS_DML
-            : StatementType.SELECT;
+    // If the server provided the is_update field, use it to determine the statement type
+    StatementType statementType;
+    if (isUpdate != null) {
+      statementType = isUpdate ? StatementType.IS_DML : StatementType.SELECT;
+    } else {
+      // Fall back to the legacy logic: check if the result set schema is empty
+      statementType =
+          resultSetSchema == null || resultSetSchema.getFields().isEmpty()
+              ? StatementType.IS_DML
+              : StatementType.SELECT;
+    }
     return new Signature(
         columnMetaData,
         sql,
@@ -90,7 +100,7 @@ public class ArrowFlightMetaImpl extends MetaImpl {
 
   @Override
   public void commit(final ConnectionHandle connectionHandle) {
-    // TODO Fill this stub.
+    ((ArrowFlightConnection) connection).getClientHandler().commit();
   }
 
   @Override
@@ -150,6 +160,10 @@ public class ArrowFlightMetaImpl extends MetaImpl {
       throw new IllegalStateException("Prepared statement not found: " + statementHandle);
     }
 
+    if (parameterValuesList.isEmpty()) {
+      return new ExecuteBatchResult(new long[0]);
+    }
+
     final AvaticaParameterBinder binder =
         new AvaticaParameterBinder(
             preparedStatement, ((ArrowFlightConnection) connection).getBufferAllocator());
@@ -157,8 +171,14 @@ public class ArrowFlightMetaImpl extends MetaImpl {
       binder.bind(parameterValuesList.get(i), i);
     }
 
-    // Update query
-    long[] updatedCounts = {preparedStatement.executeUpdate()};
+    // Flight SQL reports an aggregate count for the entire bound record batch.
+    // JDBC requires one count per batch entry; do not invent per-entry counts.
+    long aggregateCount = preparedStatement.executeUpdate();
+    long[] updatedCounts = new long[parameterValuesList.size()];
+    Arrays.fill(updatedCounts, Statement.SUCCESS_NO_INFO);
+    if (updatedCounts.length == 1 && aggregateCount >= 0) {
+      updatedCounts[0] = aggregateCount;
+    }
     return new ExecuteBatchResult(updatedCounts);
   }
 
@@ -179,7 +199,10 @@ public class ArrowFlightMetaImpl extends MetaImpl {
         ((ArrowFlightConnection) connection).getClientHandler().prepare(query);
     handle.signature =
         newSignature(
-            query, preparedStatement.getDataSetSchema(), preparedStatement.getParameterSchema());
+            query,
+            preparedStatement.getDataSetSchema(),
+            preparedStatement.getParameterSchema(),
+            preparedStatement.isUpdate());
     statementHandlePreparedStatementMap.put(new StatementHandleKey(handle), preparedStatement);
     return preparedStatement;
   }
@@ -416,7 +439,7 @@ public class ArrowFlightMetaImpl extends MetaImpl {
 
   @Override
   public void rollback(final ConnectionHandle connectionHandle) {
-    // TODO Fill this stub.
+    ((ArrowFlightConnection) connection).getClientHandler().rollback();
   }
 
   @Override
@@ -429,6 +452,11 @@ public class ArrowFlightMetaImpl extends MetaImpl {
 
   @Override
   public ConnectionProperties connectionSync(ConnectionHandle ch, ConnectionProperties connProps) {
+    if (connProps.isAutoCommit() != null) {
+      ((ArrowFlightConnection) connection)
+          .getClientHandler()
+          .setAutoCommit(connProps.isAutoCommit());
+    }
     final ConnectionProperties result = super.connectionSync(ch, connProps);
     final String newCatalog = this.connProps.getCatalog();
     if (newCatalog != null) {
