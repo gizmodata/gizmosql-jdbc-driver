@@ -17,6 +17,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   classes from taking precedence over newly compiled dependencies.
 - Backport upstream DATE(MILLISECOND) parameter binding and Unix domain socket
   channel compatibility fixes.
+- `DATE` values before 1970 no longer come back one day late when `getDate(Calendar)`
+  applies a non-zero calendar offset (upstream GH-1293).
+- An unsupported pooled buffer now raises the intended "requires sun.misc.Unsafe"
+  error instead of a later `ClassCastException`, and the allocator's normal-buffer
+  count metric reports the count rather than the size (upstream #1259).
+
+### Security
+- Updated bundled dependencies to clear every known advisory reported by OSV
+  against the shaded driver JAR (previously 9 packages, about 50 advisories):
+  - Netty 4.2.9 -> 4.2.17 (incl. critical CVE-2026-75595 SNI routing bypass and
+    high CVE-2026-50010, where wrapping a plain trust manager silently disabled
+    hostname verification; also HTTP/2 DoS and decompression fixes). netty-tcnative
+    2.0.74 -> 2.0.81 follows the Netty BOM.
+  - Jackson 2.21.0 -> 2.22.3 (polymorphic-type-validator bypasses, SSRF via eager
+    DNS resolution, and parser DoS fixes).
+  - BouncyCastle 1.84 -> 1.85 (critical CVE-2026-8763 name-constraints bypass,
+    CVE-2026-13506 ASN.1 nesting-depth guard).
+  - json-smart 2.5.1 -> 2.5.2 (CVE-2024-57699 uncontrolled recursion).
+- Also aligned with upstream `apache/arrow-java`: gRPC 1.79.0 -> 1.83.1, protobuf
+  4.33.4 -> 4.35.1, Guava 33.4.8 -> 33.6.0, commons-codec 1.20.0 -> 1.22.1,
+  Caffeine 3.2.3 -> 3.2.4, SLF4J 2.0.17 -> 2.0.18 (proto-google-common-protos in
+  the driver follows gRPC: 2.63.2 -> 2.64.1).
 
 ### Changed
 - Recognize the optional Flight SQL `is_update` prepared-statement metadata, while
