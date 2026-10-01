@@ -43,9 +43,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Recognize the optional Flight SQL `is_update` prepared-statement metadata, while
   preserving behavior for older servers which do not supply it.
-- Run live JDBC integration checks against both v1.38.5 and the latest GizmoSQL
+- Run live JDBC integration checks against both v1.40.0 and the latest GizmoSQL
   image, including prepared reuse, batch ledgers, commit/rollback, and autocommit
   transitions. Temporary tables keep repeat runs isolated after a failed test.
+- Releases are now strictly gated on the live e2e suite. `GizmoSqlIntegrationIT`
+  previously *skipped* every test when the server was unreachable, so the
+  integration job passed and a release could publish without any e2e test having
+  run. The tests now fail instead, and failsafe fails when zero integration tests
+  run. Local `docker-compose.test.yml` now pins GizmoSQL v1.40.0.
+- CI actions moved off the deprecated Node 20 runtime: `checkout` v7,
+  `setup-java` v6, `upload-artifact` v7, `attest-build-provenance` v4,
+  `action-gh-release` v3.
 
 
 ## [1.7.0] - 2026-07-27

@@ -221,6 +221,8 @@ under the License.
             <artifactId>maven-failsafe-plugin</artifactId>
             <configuration>
               <enableAssertions>false</enableAssertions>
+              <!-- These tests gate releases: running zero of them must fail the build -->
+              <failIfNoTests>true</failIfNoTests>
               <includes>
                 <include>**/*IT.java</include>
               </includes>

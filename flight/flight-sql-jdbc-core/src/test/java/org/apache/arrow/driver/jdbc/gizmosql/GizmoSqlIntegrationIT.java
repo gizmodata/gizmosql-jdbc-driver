@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -57,7 +57,7 @@ public class GizmoSqlIntegrationIT {
 
   private static String jdbcUrl;
   private static Properties connectionProps;
-  private static boolean serverAvailable = false;
+  private static String serverUnavailableReason = null;
 
   @BeforeAll
   static void setUp() {
@@ -79,12 +79,13 @@ public class GizmoSqlIntegrationIT {
       connectionProps.setProperty("disableCertificateVerification", "true");
     }
 
-    // Check if server is available
+    // Probe the server once so every test can report the same connection error.
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
-      serverAvailable = conn != null && !conn.isClosed();
+      if (conn == null || conn.isClosed()) {
+        serverUnavailableReason = "connection was null or closed";
+      }
     } catch (SQLException e) {
-      System.err.println("GizmoSQL server not available at " + jdbcUrl + ": " + e.getMessage());
-      serverAvailable = false;
+      serverUnavailableReason = e.getMessage();
     }
   }
 
@@ -93,14 +94,20 @@ public class GizmoSqlIntegrationIT {
     // Cleanup if needed
   }
 
-  private void assumeServerAvailable() {
-    assumeTrue(serverAvailable, "GizmoSQL server not available - skipping test");
+  /**
+   * Fails (never skips) when the server is unreachable. These tests gate releases, so an
+   * unreachable server must turn the job red rather than pass with every test skipped.
+   */
+  private void requireServerAvailable() {
+    if (serverUnavailableReason != null) {
+      fail("GizmoSQL server not available at " + jdbcUrl + ": " + serverUnavailableReason);
+    }
   }
 
   @Test
   @Order(1)
   void testConnection() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       assertNotNull(conn);
@@ -111,7 +118,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(2)
   void testDatabaseMetaData() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -140,7 +147,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(3)
   void testSimpleQuery() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -155,7 +162,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(4)
   void testQueryWithMultipleRows() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -178,7 +185,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(5)
   void testCreateAndQueryTable() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
@@ -217,7 +224,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(6)
   void testPreparedStatement() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
@@ -249,7 +256,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(7)
   void testResultSetMetaData() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -270,7 +277,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(8)
   void testNullHandling() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -287,7 +294,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(9)
   void testLargeResultSet() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -304,7 +311,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(10)
   void testAggregation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -323,7 +330,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(11)
   void testTransactionIsolation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       // Check that we can get transaction isolation level
@@ -340,7 +347,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(12)
   void testGetCatalogs() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -359,7 +366,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(13)
   void testGetSchemas() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps)) {
       DatabaseMetaData metaData = conn.getMetaData();
@@ -377,7 +384,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(14)
   void testGetTables() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
@@ -408,7 +415,7 @@ public class GizmoSqlIntegrationIT {
   @Order(100)
   void testArrayLiteralBracketSyntax() throws SQLException {
     // Issue #95: Verify that DuckDB's bracket syntax for arrays works
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -426,7 +433,7 @@ public class GizmoSqlIntegrationIT {
   @Order(101)
   void testArrayLiteralListSyntax() throws SQLException {
     // Test DuckDB's list_value function as alternative
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -442,7 +449,7 @@ public class GizmoSqlIntegrationIT {
   @Order(102)
   void testListHasAnyFunction() throws SQLException {
     // Issue #95: This was the specific use case that triggered the issue
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
@@ -473,7 +480,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(103)
   void testNestedArrays() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -488,7 +495,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(104)
   void testArrayAggregation() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -505,7 +512,7 @@ public class GizmoSqlIntegrationIT {
   @Order(105)
   void testArrayWithMixedTypes() throws SQLException {
     // Test that string arrays work
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement();
@@ -526,7 +533,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(200)
   void testDecimalParameterRoundTrip() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -561,7 +568,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(201)
   void testGetIndexInfo() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -620,7 +627,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(202)
   void testGetViewDefinition() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -657,7 +664,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(203)
   void testDmlUpdateCount() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -695,7 +702,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(204)
   void testGetColumnsEnrichment() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -763,7 +770,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(205)
   void testDecimalBindWithNonBigDecimalInput() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -826,7 +833,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(206)
   void testInsertReturningResultSet() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
 
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement s = conn.createStatement()) {
@@ -929,7 +936,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(207)
   void testPreparedReuseAndBatchLedger() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
       stmt.execute("CREATE TEMP TABLE it_reuse_ledger (id INTEGER PRIMARY KEY, value VARCHAR)");
@@ -963,7 +970,7 @@ public class GizmoSqlIntegrationIT {
   @Test
   @Order(208)
   void testCommitRollbackAndAutocommitTransition() throws SQLException {
-    assumeServerAvailable();
+    requireServerAvailable();
     try (Connection conn = DriverManager.getConnection(jdbcUrl, connectionProps);
         Statement stmt = conn.createStatement()) {
       stmt.execute("CREATE TEMP TABLE it_transaction_ledger (id INTEGER)");
