@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-01
+
 ### Fixed
 - `Connection.commit()` and `rollback()` now control the server transaction. Manual
   transactions restart before the next operation after a commit or rollback; a
